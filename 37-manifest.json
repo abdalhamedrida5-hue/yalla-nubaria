@@ -1,0 +1,14 @@
+{
+  "name": "يلا نوبارية",
+  "short_name": "يلا نوبارية",
+  "description": "اطلب من محلات مدينة النوبارية وكباتن يوصلولك لحد البيت",
+  "start_url": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "background_color": "#f4f6f5",
+  "theme_color": "#0e7a4f",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
