@@ -91,6 +91,9 @@
       } else if (profile.role === 'admin') {
         h += '<button data-go="#/admin">لوحة التحكم</button>';
       }
+      if (profile.role !== 'admin') {
+        h += '<button data-go="#/wallet">محفظتي 💰</button>';
+      }
       h += '<button id="btn-logout">خروج</button>';
     }
     nav.innerHTML = h;
@@ -129,7 +132,8 @@
     if (hash === '#/captain') return profile.role === 'captain' ? vCaptain() : go('');
     if (hash === '#/admin') return profile.role === 'admin' ? vAdmin('approvals') : go('');
     if (hash === '#/admin/orders') return profile.role === 'admin' ? vAdmin('orders') : go('');
-    if (hash === '#/admin/dues') return profile.role === 'admin' ? vAdmin('dues') : go('');
+    if (hash === '#/admin/wallets') return profile.role === 'admin' ? vAdmin('wallets') : go('');
+    if (hash === '#/wallet') return profile.role === 'admin' ? go('') : vWallet();
 
     // افتراضي حسب الدور
     if (profile.role === 'customer') return go('#/shops');
@@ -161,12 +165,9 @@
       c.onclick = function () { go('#/signup/' + c.getAttribute('data-role')); };
     });
     $('#to-login').onclick = function () { go('#/login'); };
-    $('#claim-admin').onclick = async function () {
+    $('#claim-admin').onclick = function () {
       if (!session) { showErr('سجّل دخولك الأول وبعدين اضغط هنا'); return; }
-      var r = await sb.rpc('claim_admin');
-      if (r.error) return showErr('حصل خطأ: ' + r.error.message);
-      if (r.data === 'ok') { await loadProfile(); render(); }
-      else showErr('فيه أدمن متسجل قبل كده');
+      go('#/claim');
     };
   }
 
@@ -273,16 +274,25 @@
   }
 
   async function vClaimAdmin() {
-    setMain('<div class="loading">جاري التحقق…</div>');
-    var r = await sb.rpc('claim_admin');
-    if (r.error) { setMain('<div class="notice err">حصل خطأ: ' + esc(r.error.message) + '</div>'); return; }
-    if (r.data === 'ok') {
-      await loadProfile();
-      setMain('<div class="notice ok">تمام ✅ بقيت أدمن التطبيق</div>');
-      setTimeout(function () { go(''); render(); }, 1200);
-    } else {
-      setMain('<div class="notice err">فيه أدمن متسجل قبل كده</div>');
-    }
+    setMain('<div class="card"><h3>تفعيل صلاحية الأدمن</h3>' +
+      '<div class="muted" style="margin-bottom:8px">لو انت صاحب التطبيق وسجّلت برقمك المعتمد، اضغط تفعيل. لو معاك كود التفعيل اكتبه.</div>' +
+      '<label>كود التفعيل (اختياري لرقم صاحب التطبيق)</label><input id="c-code" placeholder="مثال: XX-0000-XX">' +
+      '<button class="btn" id="do-claim">تفعيل</button></div>');
+    $('#do-claim').onclick = async function () {
+      setMain('<div class="loading">جاري التحقق…</div>');
+      var code = ($('#c-code') && $('#c-code').value ? $('#c-code').value.trim() : '') || null;
+      var r = await sb.rpc('claim_admin', { p_code: code });
+      if (r.error) { setMain('<div class="notice err">حصل خطأ: ' + esc(r.error.message) + '</div>'); return; }
+      if (r.data === 'ok') {
+        await loadProfile();
+        setMain('<div class="notice ok">تمام ✅ بقيت أدمن التطبيق</div>');
+        setTimeout(function () { go(''); render(); }, 1200);
+      } else if (r.data === 'wrong_code') {
+        setMain('<div class="notice err">الكود غلط. صلاحية الأدمن لصاحب التطبيق بس.</div>');
+      } else {
+        setMain('<div class="notice err">فيه أدمن متسجل قبل كده</div>');
+      }
+    };
   }
 
   function vRejected() {
@@ -370,48 +380,72 @@
   function saveCart() { try { localStorage.setItem('yn_cart', JSON.stringify(cart)); } catch (e) {} }
   function loadCart() { try { cart = JSON.parse(localStorage.getItem('yn_cart')); } catch (e) { cart = null; } }
 
-  function vCheckout() {
+  async function vCheckout() {
     if (!cart || cartCount() === 0) { go('#/shops'); return; }
     var items = Object.keys(cart.items).map(function (k) { return cart.items[k]; });
     var sub = cartSubtotal(), fee = cart.deliveryFee, total = sub + fee;
+    var bal = await myBalance();
+    var enough = bal !== null && bal >= total;
     setMain(
       '<button class="linklike" id="back">← رجوع</button>' +
       '<div class="card"><h3>إتمام الطلب من ' + esc(cart.shopName) + '</h3>' +
       items.map(function (i) { return '<div class="total-line"><span>' + esc(i.name) + ' × ' + i.qty + '</span><span>' + money(i.qty * i.price) + '</span></div>'; }).join('') +
       '<div class="total-line"><span>التوصيل</span><span>' + money(fee) + '</span></div>' +
-      '<div class="total-line grand"><span>الإجمالي (كاش عند الاستلام)</span><span>' + money(total) + '</span></div>' +
+      '<div class="total-line grand"><span>الإجمالي (هيتخصم من محفظتك)</span><span>' + money(total) + '</span></div>' +
+      '<div class="total-line"><span>رصيد محفظتك</span><span>' + (bal === null ? '—' : money(bal)) + '</span></div>' +
       '</div>' +
+      (bal !== null && !enough
+        ? '<div class="notice warn">رصيدك مش كفاية للطلب ده. اشحن محفظتك الأول وارجع أكّد.</div>' +
+          '<button class="btn" id="go-wallet">شحن المحفظة 💰</button>'
+        : '') +
       '<div class="card">' +
       '<label>العنوان بالتفصيل</label><textarea id="f-addr" rows="2" placeholder="الشارع، رقم العمارة، علامة مميزة…"></textarea>' +
       '<label>موبايل للتواصل</label><input id="f-phone" inputmode="numeric" maxlength="11" value="' + esc(profile.phone) + '">' +
       '<label>ملاحظات (اختياري)</label><input id="f-notes" placeholder="مثال: من غير بصل">' +
-      '<button class="btn" id="place-order">تأكيد الطلب - ' + money(total) + '</button></div>'
+      (bal === null || enough
+        ? '<button class="btn" id="place-order">تأكيد الطلب - ' + money(total) + '</button>'
+        : '') +
+      '</div>'
     );
     $('#back').onclick = function () { go('#/shop/' + cart.shopId); };
-    $('#place-order').onclick = async function () {
+    var gw = $('#go-wallet');
+    if (gw) gw.onclick = function () { go('#/wallet'); };
+    var po = $('#place-order');
+    if (!po) return;
+    po.onclick = async function () {
       var addr = $('#f-addr').value.trim(), phone = $('#f-phone').value.trim(), notes = $('#f-notes').value.trim();
       if (addr.length < 5) return showErr('اكتب العنوان بالتفصيل');
       if (!phoneOk(phone)) return showErr('رقم الموبايل مش صح');
-      $('#place-order').disabled = true;
+      po.disabled = true;
       var or = await sb.from('orders').insert({
         customer_id: profile.id, shop_id: cart.shopId,
         delivery_address: addr, customer_phone: phone, notes: notes,
         subtotal: sub, delivery_fee: fee, total: total
       }).select('id').single();
-      if (or.error) { $('#place-order').disabled = false; return showErr('الطلب متبعتش: ' + or.error.message); }
+      if (or.error) {
+        po.disabled = false;
+        if (or.error.message && or.error.message.indexOf('insufficient_wallet_balance') >= 0) return showErr('رصيدك مش كفاية، اشحن محفظتك الأول');
+        return showErr('الطلب متبعتش: ' + or.error.message);
+      }
       var orderId = or.data.id;
       var ir = await sb.from('order_items').insert(items.map(function (i) {
         return { order_id: orderId, product_id: i.id, name: i.name, price: i.price, qty: i.qty };
       }));
-      if (ir.error) { $('#place-order').disabled = false; return showErr('حصل خطأ فى الأصناف: ' + ir.error.message); }
+      if (ir.error) { po.disabled = false; return showErr('حصل خطأ فى الأصناف: ' + ir.error.message); }
       cart = null; saveCart();
       setMain(
         '<div class="hero"><h1>✅ طلبك اتبعت!</h1><p>المحل هيراجع الطلب ويأكده، والكابتن هيوصّله</p></div>' +
-        '<div class="notice ok">الدفع كاش عند الاستلام: ' + money(total) + '</div>' +
+        '<div class="notice ok">اتخصم ' + money(total) + ' من محفظتك</div>' +
         '<button class="btn" id="to-orders">تابع طلبك</button>'
       );
       $('#to-orders').onclick = function () { go('#/orders'); };
     };
+  }
+
+  async function myBalance() {
+    var r = await sb.rpc('my_balance');
+    if (r.error) return null;
+    return Number(r.data) || 0;
   }
 
   async function vMyOrders() {
@@ -441,6 +475,71 @@
       };
     });
     startPoll(function () { if ((location.hash || '') === '#/orders') vMyOrders(); });
+  }
+
+  // ---------- المحفظة ----------
+  async function vWallet() {
+    setMain('<div class="loading">جاري تحميل محفظتك…</div>');
+    var bal = await myBalance();
+    var lr = await sb.from('wallet_ledger').select('*').order('created_at', { ascending: false }).limit(30);
+    var qr = await sb.from('wallet_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+    var ledger = lr.data || [], reqs = qr.data || [];
+    var KIND = {
+      topup: 'شحن رصيد', withdrawal: 'سحب', order_payment: 'دفع طلب',
+      order_refund: 'استرجاع طلب ملغي', order_earning: 'ربح من طلب',
+      admin_adjustment: 'قيد يدوي من الإدارة'
+    };
+    var h = '<div class="hero"><h1>💰 محفظتي</h1>' +
+      '<p style="font-size:1.6rem;margin:4px 0"><b>' + (bal === null ? '—' : money(bal)) + '</b></p></div>' +
+      '<div class="notice warn">رصيدك ده سجل حسابات جوه التطبيق. الشحن والسحب بيتأكدوا يدوي من الإدارة (فودافون كاش / إنستاباي)، مفيش فلوس بتتنقل لوحدها جوه التطبيق.</div>' +
+      (CFG.WALLET_PROVIDER_ENABLED ? '' : '<div class="muted" style="margin:0 6px 10px">الشحن الأوتوماتيك هيتفعّل لما وسيلة الدفع الرسمية تتفعل.</div>');
+
+    h += reqs.map(function (q) {
+      return '<div class="notice warn">⏳ طلب ' + (q.kind === 'topup' ? 'شحن' : 'سحب') + ' ' + money(q.amount) + ' مستني موافقة الإدارة</div>';
+    }).join('');
+
+    h += '<div class="card"><h3>شحن المحفظة</h3>' +
+      '<div class="muted" style="margin-bottom:8px">حوّل المبلغ فودافون كاش أو إنستاباي على رقم الإدارة: <b>' + esc(CFG.ADMIN_PAY_PHONE || 'اسأل الإدارة') + '</b> وبعدين ابعت الطلب هنا، والإدارة هتأكد وتضيف الرصيد.</div>' +
+      '<label>المبلغ (جنيه)</label><input id="w-topup-amt" inputmode="decimal" placeholder="مثال: 100">' +
+      '<label>رقم العملية / وسيلة التحويل</label><input id="w-topup-note" placeholder="مثال: فودافون كاش عملية رقم 12345">' +
+      '<button class="btn" id="w-topup">إرسال طلب شحن</button></div>';
+
+    h += '<div class="card"><h3>سحب من المحفظة</h3>' +
+      '<div class="muted" style="margin-bottom:8px">اطلب سحب والإدارة هتحوّللك فودافون كاش أو إنستاباي بعد المراجعة.</div>' +
+      '<label>المبلغ (جنيه)</label><input id="w-wd-amt" inputmode="decimal" placeholder="مثال: 50">' +
+      '<label>رقم استلام الفلوس</label><input id="w-wd-note" placeholder="رقم فودافون كاش / إنستاباي بتاعك">' +
+      '<button class="btn" id="w-wd">إرسال طلب سحب</button></div>';
+
+    h += '<h3 style="margin:14px 0 8px">آخر الحركات</h3>';
+    h += ledger.length ? ledger.map(function (l) {
+      var pos = Number(l.amount) >= 0;
+      return '<div class="card"><div class="row"><div class="grow">' +
+        '<b>' + esc(KIND[l.kind] || l.kind) + '</b>' +
+        (l.note ? '<div class="muted">' + esc(l.note) + '</div>' : '') +
+        '<div class="muted">' + new Date(l.created_at).toLocaleString('ar-EG') + '</div></div>' +
+        '<b style="color:' + (pos ? '#1a7f37' : '#b3261e') + '">' + (pos ? '+' : '') + money(l.amount) + '</b></div></div>';
+    }).join('') : '<div class="notice warn">مفيش حركات لسه</div>';
+    setMain(h);
+
+    $('#w-topup').onclick = async function () {
+      var amt = parseFloat($('#w-topup-amt').value);
+      if (!(amt > 0)) return showErr('اكتب مبلغ صح');
+      $('#w-topup').disabled = true;
+      var r = await sb.from('wallet_requests').insert({ user_id: profile.id, kind: 'topup', amount: amt, note: $('#w-topup-note').value.trim() });
+      $('#w-topup').disabled = false;
+      if (r.error) return showErr('الطلب متبعتش: ' + r.error.message);
+      render();
+    };
+    $('#w-wd').onclick = async function () {
+      var amt = parseFloat($('#w-wd-amt').value);
+      if (!(amt > 0)) return showErr('اكتب مبلغ صح');
+      if (bal !== null && amt > bal) return showErr('المبلغ أكبر من رصيدك');
+      $('#w-wd').disabled = true;
+      var r = await sb.from('wallet_requests').insert({ user_id: profile.id, kind: 'withdrawal', amount: amt, note: $('#w-wd-note').value.trim() });
+      $('#w-wd').disabled = false;
+      if (r.error) return showErr('الطلب متبعتش: ' + r.error.message);
+      render();
+    };
   }
 
   // ---------- محل ----------
@@ -554,7 +653,7 @@
         '<label>سعر التوصيل (جنيه)</label><input id="s-fee" inputmode="decimal" value="' + myShop.delivery_fee + '">' +
         '<label>حالة المحل</label><select id="s-open"><option value="open"' + (myShop.is_open ? ' selected' : '') + '>مفتوح - يستقبل طلبات</option><option value="closed"' + (!myShop.is_open ? ' selected' : '') + '>مقفول مؤقتًا</option></select>' +
         '<button class="btn" id="s-save">حفظ</button></div>' +
-        '<div class="card"><h3>مستحقات التطبيق</h3><div id="s-dues" class="loading">جاري الحساب…</div></div>';
+        '<div class="card"><h3>محفظتك</h3><div id="s-dues" class="loading">جاري الحساب…</div></div>';
       $('#s-save').onclick = async function () {
         var ur = await sb.from('shops').update({
           name: $('#s-name').value.trim() || myShop.name,
@@ -567,11 +666,11 @@
         alert('اتحفظ ✅');
         render();
       };
-      var dr = await sb.from('dues').select('*').eq('party_id', profile.id).eq('settled', false);
-      var dues = dr.data || [];
-      var sum = dues.reduce(function (n, d) { return n + Number(d.amount); }, 0);
-      $('#s-dues').innerHTML = '<div class="total-line grand"><span>مستحق للتطبيق (10% من المبيعات)</span><span>' + money(sum) + '</span></div>' +
-        '<div class="muted">بيتحاسب معاك أسبوعيًا. عند التسليم بيتسجل تلقائي.</div>';
+      var bal2 = await myBalance();
+      $('#s-dues').innerHTML = '<div class="total-line grand"><span>رصيدك (نصيبك بعد خصم عمولة 10%)</span><span>' + money(bal2 || 0) + '</span></div>' +
+        '<div class="muted">أرباحك من الطلبات بتدخل محفظتك عند التسليم، وتقدر تطلب سحبها.</div>' +
+        '<button class="btn small" id="s-wallet" style="margin-top:8px">فتح محفظتي 💰</button>';
+      $('#s-wallet').onclick = function () { go('#/wallet'); };
     }
   }
 
@@ -587,7 +686,7 @@
       h += '<h3 style="margin-bottom:8px">طلبات معايا</h3>' + mine.map(function (o) {
         var btn = o.status === 'confirmed'
           ? '<button class="btn small" data-pick="' + o.id + '">استلمت من المحل 🛵</button>'
-          : '<button class="btn small" data-done="' + o.id + '">سلّمت وقبضت ✅</button>';
+          : '<button class="btn small" data-done="' + o.id + '">سلّمت ✅</button>';
         return '<div class="card">' +
           '<div class="row"><div class="grow"><span class="badge ' + o.status + '">' + (STATUS[o.status] || o.status) + '</span> <b>' + money(o.total) + '</b> <span class="muted">(نصيبك ' + money(o.delivery_fee * 0.9) + ')</span></div></div>' +
           '<div class="muted" style="margin:6px 0">من: ' + esc(o.shops ? o.shops.name : '') + ' - ' + esc(o.shops ? o.shops.address : '') + '</div>' +
@@ -604,7 +703,7 @@
         '<div class="row"><div class="grow"><b>' + esc(o.shops ? o.shops.name : '') + '</b><div class="muted">' + esc(o.shops ? o.shops.address : '') + '</div></div>' +
         '<b>' + money(o.delivery_fee) + '</b></div>' +
         '<div class="muted" style="margin:6px 0">يوصل إلى: ' + esc(o.delivery_address) + '</div>' +
-        '<div class="row"><div class="grow muted">تقبض من الزبون ' + money(o.total) + ' كاش</div>' +
+        '<div class="row"><div class="grow muted">الزبون دافع من محفظته 👛 ونصيبك هيضاف لمحفظتك عند التسليم</div>' +
         '<button class="btn small" data-take="' + o.id + '">أستلم الطلب</button></div></div>';
     }).join('');
     setMain(h);
@@ -617,7 +716,7 @@
       };
       var d = document.querySelector('[data-done="' + o.id + '"]');
       if (d) d.onclick = async function () {
-        if (!confirm('تأكيد التسليم والقبض؟')) return;
+        if (!confirm('تأكيد التسليم؟ نصيبك هيضاف لمحفظتك')) return;
         var ur = await sb.from('orders').update({ status: 'delivered' }).eq('id', o.id);
         if (ur.error) return showErr(ur.error.message);
         render();
@@ -639,7 +738,7 @@
     var tabs = '<div class="tabs">' +
       '<button data-tab="approvals" class="' + (tab === 'approvals' ? 'active' : '') + '>الموافقات</button>' +
       '<button data-tab="orders" class="' + (tab === 'orders' ? 'active' : '') + '>الطلبات</button>' +
-      '<button data-tab="dues" class="' + (tab === 'dues' ? 'active' : '') + '>المستحقات</button></div>';
+      '<button data-tab="wallets" class="' + (tab === 'wallets' ? 'active' : '') + '>المحافظ 💰</button></div>';
     setMain(tabs + '<div id="tab-body"><div class="loading">جاري التحميل…</div></div>');
     document.querySelectorAll('.tabs button').forEach(function (b) {
       b.onclick = function () { go('#/admin' + (b.getAttribute('data-tab') === 'approvals' ? '' : '/' + b.getAttribute('data-tab'))); };
@@ -690,36 +789,89 @@
       }).join('');
     }
 
-    if (tab === 'dues') {
-      var dr = await sb.from('dues').select('*, profiles(full_name, phone)').order('created_at', { ascending: false }).limit(300);
-      if (dr.error) { tb.innerHTML = '<div class="notice err">' + esc(dr.error.message) + '</div>'; return; }
-      var dues = dr.data || [];
-      if (!dues.length) { tb.innerHTML = '<div class="notice warn">لسه مفيش مستحقات، هتظهر مع أول طلب يتسلّم</div>'; return; }
-      var byParty = {};
-      dues.forEach(function (d) {
-        if (!byParty[d.party_id]) byParty[d.party_id] = { name: d.profiles ? d.profiles.full_name : '؟', phone: d.profiles ? d.profiles.phone : '', role: d.party_role, unsettled: 0, settled: 0, unsettledIds: [] };
-        if (d.settled) byParty[d.party_id].settled += Number(d.amount);
-        else { byParty[d.party_id].unsettled += Number(d.amount); byParty[d.party_id].unsettledIds.push(d.id); }
-      });
-      tb.innerHTML = Object.keys(byParty).map(function (pid) {
-        var p = byParty[pid];
+    if (tab === 'wallets') {
+      var wr = await sb.from('wallet_requests').select('*, profiles(full_name, phone, role)').order('created_at', { ascending: false }).limit(100);
+      if (wr.error) { tb.innerHTML = '<div class="notice err">' + esc(wr.error.message) + '</div>'; return; }
+      var reqs = wr.data || [];
+      var pendR = reqs.filter(function (q) { return q.status === 'pending'; });
+      var doneR = reqs.filter(function (q) { return q.status !== 'pending'; }).slice(0, 15);
+      var h = '';
+      h += pendR.length ? pendR.map(function (q) {
+        var p = q.profiles || {};
         return '<div class="card"><div class="row"><div class="grow">' +
-          '<b>' + esc(p.name) + '</b> <span class="badge">' + (p.role === 'shop' ? '🏪' : '🛵') + '</span>' +
-          '<div class="total-line"><span>مستحق غير محصّل</span><b>' + money(p.unsettled) + '</b></div>' +
-          '<div class="muted">اتحصّل قبل كده: ' + money(p.settled) + '</div></div></div>' +
-          '<div class="row" style="margin-top:8px">' +
-          (p.unsettled > 0 ? '<button class="btn small" data-settle="' + pid + '">اتحصّل كله ✅</button>' : '') +
-          '<a class="wa" target="_blank" href="' + waLink(p.phone) + '">واتساب</a></div></div>';
-      }).join('');
-      Object.keys(byParty).forEach(function (pid) {
-        var s = document.querySelector('[data-settle="' + pid + '"]');
-        if (s) s.onclick = async function () {
-          if (!confirm('تأكيد إنك حصلت ' + money(byParty[pid].unsettled) + ' من ' + byParty[pid].name + '؟')) return;
-          var ur = await sb.from('dues').update({ settled: true }).eq('party_id', pid).eq('settled', false);
+          '<b>' + esc(p.full_name || '؟') + '</b> <span class="badge">' + (p.role === 'shop' ? '🏪' : p.role === 'captain' ? '🛵' : '🧺') + '</span>' +
+          '<div class="total-line"><span>' + (q.kind === 'topup' ? 'طلب شحن' : 'طلب سحب') + '</span><b>' + money(q.amount) + '</b></div>' +
+          (q.note ? '<div class="muted">' + esc(q.note) + '</div>' : '') +
+          '<div class="muted">' + new Date(q.created_at).toLocaleString('ar-EG') + '</div></div></div>' +
+          '<div class="row" style="margin-top:8px"><div class="grow">' +
+          '<button class="btn small" data-wok="' + q.id + '">تأكيد ✅</button> ' +
+          '<button class="btn small danger" data-wno="' + q.id + '">رفض</button></div>' +
+          '<a class="wa" target="_blank" href="' + waLink(p.phone || '') + '">واتساب</a></div></div>';
+      }).join('') : '<div class="notice ok">مفيش طلبات شحن أو سحب مستنية ✅</div>';
+      var br = await sb.from('wallets').select('*, profiles(full_name, phone, role)').order('balance', { ascending: false }).limit(100);
+      var bals = br.data || [];
+      if (bals.length) {
+        h += '<h3 style="margin:14px 0 8px">الأرصدة</h3>' + bals.map(function (w) {
+          var p = w.profiles || {};
+          return '<div class="card"><div class="row"><div class="grow"><b>' + esc(p.full_name || '؟') + '</b>' +
+            ' <span class="badge">' + (p.role === 'shop' ? '🏪' : p.role === 'captain' ? '🛵' : p.role === 'admin' ? '⭐' : '🧺') + '</span>' +
+            '<div class="muted">' + esc(p.phone || '') + '</div></div>' +
+            '<b>' + money(w.balance) + '</b></div>' +
+            '<div class="row" style="margin-top:8px">' +
+            '<button class="btn small ghost" data-plus="' + w.user_id + '">＋ قيد إضافة</button> ' +
+            '<button class="btn small ghost danger" data-minus="' + w.user_id + '">－ قيد خصم</button></div></div>';
+        }).join('');
+      }
+      if (doneR.length) {
+        h += '<h3 style="margin:14px 0 8px">آخر الطلبات المنفذة</h3>' + doneR.map(function (q) {
+          var p = q.profiles || {};
+          return '<div class="card"><div class="row"><div class="grow">' +
+            '<b>' + esc(p.full_name || '؟') + '</b> <span class="badge ' + (q.status === 'approved' ? 'delivered' : 'cancelled') + '">' + (q.status === 'approved' ? 'اتنفذ ✅' : 'اترفض ❌') + '</span>' +
+            '<div class="muted">' + (q.kind === 'topup' ? 'شحن' : 'سحب') + ' ' + money(q.amount) + (q.admin_note ? ' • ' + esc(q.admin_note) : '') + '</div></div></div></div>';
+        }).join('');
+      }
+      tb.innerHTML = h;
+      async function adminAdjust(w, sign) {
+        var p = w.profiles || {};
+        var amt = parseFloat(prompt((sign > 0 ? 'إضافة' : 'خصم') + ' كام جنيه ' + (sign > 0 ? 'لـ' : 'من') + ' ' + (p.full_name || '') + '؟'));
+        if (!(amt > 0)) return;
+        var note = prompt('سبب القيد (هيظهر فى دفتر المستخدم):') || '';
+        var r = await sb.rpc('admin_adjust_wallet', { p_user: w.user_id, p_amount: sign * amt, p_note: note });
+        if (r.error) {
+          if (r.error.message && r.error.message.indexOf('balance') >= 0) return showErr('الرصيد مش كفاية للخصم ده');
+          return showErr(r.error.message);
+        }
+        render();
+      }
+      bals.forEach(function (w) {
+        var plus = document.querySelector('[data-plus="' + w.user_id + '"]');
+        if (plus) plus.onclick = function () { adminAdjust(w, 1); };
+        var minus = document.querySelector('[data-minus="' + w.user_id + '"]');
+        if (minus) minus.onclick = function () { adminAdjust(w, -1); };
+      });
+      pendR.forEach(function (q) {
+        var ok = document.querySelector('[data-wok="' + q.id + '"]');
+        if (ok) ok.onclick = async function () {
+          var msg = q.kind === 'topup'
+            ? 'تأكيد الشحن؟ لازم تكون استلمت التحويلة فعلاً قبل ما تضيف الرصيد'
+            : 'تأكيد السحب؟ هيتحسم من رصيده، حوّلله المبلغ فودافون كاش / إنستاباي';
+          if (!confirm(msg)) return;
+          var ur = await sb.from('wallet_requests').update({ status: 'approved' }).eq('id', q.id);
+          if (ur.error) {
+            if (ur.error.message && ur.error.message.indexOf('balance') >= 0) return showErr('رصيد المستخدم مش كفاية للسحب ده');
+            return showErr(ur.error.message);
+          }
+          render();
+        };
+        var no = document.querySelector('[data-wno="' + q.id + '"]');
+        if (no) no.onclick = async function () {
+          var note = prompt('سبب الرفض (اختياري):') || '';
+          var ur = await sb.from('wallet_requests').update({ status: 'rejected', admin_note: note }).eq('id', q.id);
           if (ur.error) return showErr(ur.error.message);
           render();
         };
       });
+      startPoll(function () { if ((location.hash || '') === '#/admin/wallets') vAdmin('wallets'); });
     }
   }
 
