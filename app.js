@@ -26,7 +26,51 @@
     'cancelled': 'ملغي ❌'
   };
 
-  var CATEGORIES = ['مطعم', 'سوبرماركت', 'صيدلية', 'مخبز', 'خضار وفاكهة', 'كشري ووجبات', 'قهوة وعصائر', 'أخرى'];
+  // تصنيفات المحلات وتخصصاتها
+  var TAXONOMY = [
+    { id: 'restaurants', name: 'مطاعم', emoji: '🍔', subs: ['برجر', 'شاورما', 'فراخ مشوية', 'مشويات', 'كشري', 'بيتزا', 'فول وطعمية', 'سمك', 'حلويات', 'عصائر'] },
+    { id: 'grocery', name: 'سوبرماركت وبقالة', emoji: '🛒', subs: ['مواد غذائية', 'ألبان وأجبان', 'مشروبات', 'معلبات', 'مستلزمات أطفال', 'تنظيف'] },
+    { id: 'produce', name: 'خضار وفاكهة', emoji: '🥬', subs: ['خضار', 'فاكهة', 'ورقيات'] },
+    { id: 'butcher', name: 'جزارة', emoji: '🥩', subs: ['لحمة بلدي', 'فراخ', 'لحوم مجمدة', 'أسماك'] },
+    { id: 'bakery', name: 'مخبز', emoji: '🥖', subs: ['عيش', 'فطير', 'معجنات', 'كيك وحلويات مخبوزة'] },
+    { id: 'household', name: 'مستلزمات منزلية ويومية', emoji: '🧻', subs: ['منظفات', 'أدوات مطبخ', 'مستلزمات حمام', 'بلاستيك وعلب', 'ورقيات'] },
+    { id: 'electric', name: 'أدوات كهربائية', emoji: '💡', subs: ['لمبات', 'أسلاك ومفاتيح', 'أدوات كهربائية صغيرة', 'إكسسوارات كهرباء'] },
+    { id: 'stationery', name: 'مكتبة وأدوات مدرسية', emoji: '📚', subs: ['كشاكيل ودفاتر', 'أقلام', 'أدوات مكتبية', 'طباعة وتصوير', 'كتب'] },
+    { id: 'clothes', name: 'ملابس وأحذية', emoji: '👕', subs: ['حريمي', 'رجالي', 'أطفال', 'أحذية', 'شنط وإكسسوارات'] },
+    { id: 'mobile', name: 'موبايلات وإكسسوارات', emoji: '📱', subs: ['إكسسوارات موبايل', 'شواحن', 'سماعات', 'صيانة'] },
+    { id: 'other', name: 'أخرى', emoji: '🏪', subs: ['متنوعة'] }
+  ];
+  function catById(id) {
+    for (var i = 0; i < TAXONOMY.length; i++) if (TAXONOMY[i].id === id) return TAXONOMY[i];
+    return null;
+  }
+  function catByName(name) {
+    for (var i = 0; i < TAXONOMY.length; i++) if (TAXONOMY[i].name === name) return TAXONOMY[i];
+    return null;
+  }
+  function catEmoji(name) { var c = catByName(name); return c ? c.emoji : '🏪'; }
+  function subsOf(id) { var c = catById(id); return c ? c.subs : []; }
+  function chipsHTML(subs, selected) {
+    selected = selected || [];
+    return subs.map(function (sub) {
+      var on = selected.indexOf(sub) >= 0 ? ' on' : '';
+      return '<button type="button" class="chip' + on + '" data-chip="' + esc(sub) + '">' + esc(sub) + '</button>';
+    }).join('');
+  }
+  function bindChips(scope) {
+    (scope || document).querySelectorAll('[data-chip]').forEach(function (b) {
+      b.onclick = function () { b.classList.toggle('on'); };
+    });
+  }
+  function selectedChips(scope) {
+    var out = [];
+    (scope || document).querySelectorAll('[data-chip].on').forEach(function (b) { out.push(b.getAttribute('data-chip')); });
+    return out;
+  }
+  function specialtiesText(subs) {
+    if (!subs || !subs.length) return '';
+    return subs.map(function (x) { return '<span class="chip ro">' + esc(x) + '</span>'; }).join(' ');
+  }
   var VEHICLES = ['موتوسيكل', 'تكتك', 'عربية', 'دراجة', 'مشي'];
 
   // ---------- أدوات ----------
@@ -206,7 +250,9 @@
     if (role === 'shop') {
       extra =
         '<label>اسم المحل</label><input id="f-shopname" placeholder="مثال: سوبر ماركت النور">' +
-        '<label>نوع المحل</label><select id="f-cat">' + CATEGORIES.map(function (c) { return '<option>' + c + '</option>'; }).join('') + '</select>' +
+        '<label>نوع المحل</label><select id="f-cat">' + TAXONOMY.map(function (c) { return '<option value="' + c.id + '">' + c.emoji + ' ' + c.name + '</option>'; }).join('') + '</select>' +
+        '<label>تخصصات المحل (اختار اللي يناسبك)</label><div class="chips" id="f-subs">' + chipsHTML(subsOf('restaurants'), []) + '</div>' +
+        '<label>تخصص تاني (اختياري)</label><input id="f-sub-extra" placeholder="مثال: أكل بيتي">' +
         '<label>عنوان المحل</label><input id="f-address" placeholder="الشارع / المنطقة">' +
         '<label>سعر التوصيل (جنيه)</label><input id="f-fee" inputmode="decimal" value="15">';
     } else if (role === 'captain') {
@@ -225,6 +271,13 @@
       '<hr class="divider"><div class="center"><button class="linklike" id="to-login">عندك حساب؟ ادخل</button></div></div>'
     );
     $('#to-login').onclick = function () { go('#/login'); };
+    if (role === 'shop') {
+      bindChips($('#f-subs'));
+      $('#f-cat').onchange = function () {
+        $('#f-subs').innerHTML = chipsHTML(subsOf($('#f-cat').value), []);
+        bindChips($('#f-subs'));
+      };
+    }
     $('#do-signup').onclick = async function () {
       var name = $('#f-name').value.trim(), phone = $('#f-phone').value.trim(), pass = $('#f-pass').value;
       if (name.length < 2) return showErr('اكتب اسمك');
@@ -233,7 +286,10 @@
       var payload = { name: name, phone: phone, pass: pass };
       if (role === 'shop') {
         payload.shopName = $('#f-shopname').value.trim();
-        payload.cat = $('#f-cat').value;
+        payload.cat = (catById($('#f-cat').value) || { name: 'أخرى' }).name;
+        payload.subs = selectedChips($('#f-subs'));
+        var extraSub = $('#f-sub-extra').value.trim();
+        if (extraSub) payload.subs.push(extraSub);
         payload.address = $('#f-address').value.trim();
         payload.fee = parseFloat($('#f-fee').value) || 15;
         if (!payload.shopName) return showErr('اكتب اسم المحل');
@@ -260,6 +316,7 @@
       if (role === 'shop') {
         var sr = await sb.from('shops').insert({
           owner_id: user.id, name: payload.shopName, category: payload.cat,
+          specialties: payload.subs || [],
           address: payload.address, phone: phone, delivery_fee: payload.fee
         });
         if (sr.error) { $('#do-signup').disabled = false; return showErr('حصل خطأ فى حفظ المحل: ' + sr.error.message); }
@@ -305,21 +362,55 @@
   }
 
   // ---------- زبون ----------
+  var shopFilter = { cat: '', sub: '' };
+
   async function vShops() {
     setMain('<div class="loading">جاري تحميل المحلات…</div>');
     var r = await sb.from('shops').select('*').eq('is_open', true).order('name');
     if (r.error) return showErr(r.error.message);
-    var shops = (r.data || []).filter(function (s) { return s.owner_id !== profile.id; });
-    if (!shops.length) {
-      setMain('<div class="hero"><h1>🏪 المحلات</h1><p>لسه مفيش محلات متاحة، ارجع بعدين</p></div>');
-      return;
+    var all = (r.data || []).filter(function (s) { return s.owner_id !== profile.id; });
+    var cat = shopFilter.cat ? catById(shopFilter.cat) : null;
+    var list = all.filter(function (s) {
+      if (cat && s.category !== cat.name) return false;
+      if (shopFilter.sub && (s.specialties || []).indexOf(shopFilter.sub) < 0) return false;
+      return true;
+    });
+
+    var h = '<h3 style="margin:4px 0 10px">اطلب من:</h3><div class="cat-grid">' +
+      '<div class="cat-card' + (cat ? '' : ' on') + '" data-cat=""><span class="emoji">🧺</span><b>كل المحلات</b>' +
+      '<div class="muted">' + all.length + ' محل</div></div>' +
+      TAXONOMY.map(function (c) {
+        var n = all.filter(function (s) { return s.category === c.name; }).length;
+        return '<div class="cat-card' + (shopFilter.cat === c.id ? ' on' : '') + '" data-cat="' + c.id + '">' +
+          '<span class="emoji">' + c.emoji + '</span><b>' + c.name + '</b>' +
+          '<div class="muted">' + (n ? n + ' محل' : 'لسه فاضي') + '</div></div>';
+      }).join('') + '</div>';
+
+    if (cat) {
+      h += '<div class="chips" style="margin:2px 0 12px">' +
+        '<button type="button" class="chip' + (shopFilter.sub ? '' : ' on') + '" data-sub="">كل التخصصات</button>' +
+        cat.subs.map(function (sub) {
+          return '<button type="button" class="chip' + (shopFilter.sub === sub ? ' on' : '') + '" data-sub="' + esc(sub) + '">' + esc(sub) + '</button>';
+        }).join('') + '</div>';
     }
-    setMain('<h3 style="margin-bottom:10px">اطلب من:</h3>' + shops.map(function (s) {
+
+    h += list.length ? list.map(function (s) {
       return '<div class="card" data-shop="' + s.id + '" style="cursor:pointer">' +
-        '<div class="row"><div class="grow"><h3>' + esc(s.name) + '</h3>' +
+        '<div class="row"><div class="grow"><h3>' + catEmoji(s.category) + ' ' + esc(s.name) + '</h3>' +
         '<div class="muted">' + esc(s.category) + (s.address ? ' • ' + esc(s.address) : '') + '</div>' +
-        '<div class="muted">توصيل: ' + money(s.delivery_fee) + '</div></div><div style="font-size:1.6rem">🏪</div></div></div>';
-    }).join(''));
+        ((s.specialties || []).length ? '<div class="chips tight">' + specialtiesText(s.specialties) + '</div>' : '') +
+        '<div class="muted">توصيل: ' + money(s.delivery_fee) + '</div></div>' +
+        '<div style="font-size:1.6rem">' + catEmoji(s.category) + '</div></div></div>';
+    }).join('') : '<div class="notice warn">مفيش محلات في القسم ده لسه، جرّب قسم تاني أو ارجع بعدين</div>';
+
+    setMain(h);
+
+    document.querySelectorAll('[data-cat]').forEach(function (c) {
+      c.onclick = function () { shopFilter = { cat: c.getAttribute('data-cat'), sub: '' }; render(); };
+    });
+    document.querySelectorAll('[data-sub]').forEach(function (b) {
+      b.onclick = function () { shopFilter.sub = b.getAttribute('data-sub'); render(); };
+    });
     document.querySelectorAll('[data-shop]').forEach(function (c) {
       c.onclick = function () { go('#/shop/' + c.getAttribute('data-shop')); };
     });
@@ -337,8 +428,9 @@
     if (!cart) cart = { shopId: id, shopName: shop.name, deliveryFee: shop.delivery_fee, items: {} };
 
     var h = '<button class="linklike" id="back">← رجوع للمحلات</button>' +
-      '<div class="card"><div class="row"><div class="grow"><h3>' + esc(shop.name) + '</h3>' +
-      '<div class="muted">' + esc(shop.category) + (shop.address ? ' • ' + esc(shop.address) : '') + '</div></div>' +
+      '<div class="card"><div class="row"><div class="grow"><h3>' + catEmoji(shop.category) + ' ' + esc(shop.name) + '</h3>' +
+      '<div class="muted">' + esc(shop.category) + (shop.address ? ' • ' + esc(shop.address) : '') + '</div>' +
+      ((shop.specialties || []).length ? '<div class="chips tight">' + specialtiesText(shop.specialties) + '</div>' : '') + '</div>' +
       '<a class="wa" target="_blank" href="' + waLink(shop.phone, 'سلام، عندي استفسار عن ' + shop.name) + '">واتساب المحل</a></div></div>';
 
     if (!products.length) h += '<div class="notice warn">المحل ده لسه مضافش منتجاته</div>';
@@ -647,14 +739,26 @@
     if (tab === 'settings') {
       tb.innerHTML = '<div class="card"><h3>إعدادات المحل</h3>' +
         '<label>اسم المحل</label><input id="s-name" value="' + esc(myShop.name) + '">' +
+        '<label>نوع المحل</label><select id="s-cat">' + TAXONOMY.map(function (c) {
+          return '<option value="' + c.id + '"' + (myShop.category === c.name ? ' selected' : '') + '>' + c.emoji + ' ' + c.name + '</option>';
+        }).join('') + '</select>' +
+        '<label>تخصصات المحل</label><div class="chips" id="s-subs">' +
+        chipsHTML((catByName(myShop.category) || TAXONOMY[0]).subs, myShop.specialties || []) + '</div>' +
         '<label>العنوان</label><input id="s-address" value="' + esc(myShop.address) + '">' +
         '<label>سعر التوصيل (جنيه)</label><input id="s-fee" inputmode="decimal" value="' + myShop.delivery_fee + '">' +
         '<label>حالة المحل</label><select id="s-open"><option value="open"' + (myShop.is_open ? ' selected' : '') + '>مفتوح - يستقبل طلبات</option><option value="closed"' + (!myShop.is_open ? ' selected' : '') + '>مقفول مؤقتًا</option></select>' +
         '<button class="btn" id="s-save">حفظ</button></div>' +
         '<div class="card"><h3>محفظتك</h3><div id="s-dues" class="loading">جاري الحساب…</div></div>';
+      bindChips($('#s-subs'));
+      $('#s-cat').onchange = function () {
+        $('#s-subs').innerHTML = chipsHTML(subsOf($('#s-cat').value), []);
+        bindChips($('#s-subs'));
+      };
       $('#s-save').onclick = async function () {
         var ur = await sb.from('shops').update({
           name: $('#s-name').value.trim() || myShop.name,
+          category: (catById($('#s-cat').value) || { name: 'أخرى' }).name,
+          specialties: selectedChips($('#s-subs')),
           address: $('#s-address').value.trim(),
           delivery_fee: parseFloat($('#s-fee').value) || 0,
           is_open: $('#s-open').value === 'open'
@@ -749,10 +853,17 @@
       if (r.error) { tb.innerHTML = '<div class="notice err">' + esc(r.error.message) + '</div>'; return; }
       var pend = r.data || [];
       if (!pend.length) { tb.innerHTML = '<div class="notice ok">مفيش حسابات مستنية موافقة ✅</div>'; return; }
+      var psr = await sb.from('shops').select('owner_id, name, category, specialties');
+      var shopOf = {};
+      (psr.data || []).forEach(function (sh) { shopOf[sh.owner_id] = sh; });
       tb.innerHTML = pend.map(function (p) {
+        var sh = shopOf[p.id];
         return '<div class="card"><div class="row"><div class="grow">' +
           '<b>' + esc(p.full_name) + '</b> <span class="badge">' + (p.role === 'shop' ? '🏪 محل' : '🛵 كابتن') + '</span>' +
-          '<div class="muted">' + esc(p.phone) + (p.vehicle ? ' • ' + esc(p.vehicle) : '') + '</div></div></div>' +
+          '<div class="muted">' + esc(p.phone) + (p.vehicle ? ' • ' + esc(p.vehicle) : '') + '</div>' +
+          (sh ? '<div class="muted">' + catEmoji(sh.category) + ' ' + esc(sh.name) + ' • ' + esc(sh.category) + '</div>' : '') +
+          (sh && (sh.specialties || []).length ? '<div class="chips tight">' + specialtiesText(sh.specialties) + '</div>' : '') +
+          '</div></div>' +
           '<div class="row" style="margin-top:8px"><div class="grow">' +
           '<button class="btn small" data-ok="' + p.id + '">موافقة ✅</button> ' +
           '<button class="btn small danger" data-no="' + p.id + '">رفض</button></div>' +
