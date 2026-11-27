@@ -946,8 +946,15 @@
         b.onclick = function () { go(b.getAttribute('data-go2')); };
       });
       $('#admin-info').onclick = function () { go('#/about'); };
-      $('#admin-logout').onclick = async function () {
-        if (!confirm('تسجيل الخروج من حسابك؟')) return;
+      var loBtn = $('#admin-logout');
+      var loArm = false;
+      loBtn.onclick = async function () {
+        if (!loArm) {
+          loArm = true;
+          loBtn.textContent = 'متأكد؟ اضغط تاني للخروج';
+          setTimeout(function () { loArm = false; loBtn.textContent = 'تسجيل الخروج / تغيير الحساب'; }, 5000);
+          return;
+        }
         stopPoll(); await sb.auth.signOut(); session = null; profile = null; cart = null;
         location.href = location.pathname;
       };
