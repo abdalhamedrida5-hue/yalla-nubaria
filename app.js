@@ -222,14 +222,14 @@
 
   function vSetup() {
     setMain(
-      '<div class="hero"><h1>' + esc(APP_NAME) + ' 🛵</h1><p>التطبيق لسه محتاج ربط قاعدة البيانات</p></div>' +
+      '<div class="hero"><img class="hero-logo" src="icon.svg?v=7" alt=""><h1>' + esc(APP_NAME) + '</h1><p>التطبيق لسه محتاج ربط قاعدة البيانات</p></div>' +
       '<div class="notice warn">النسخة دي لسه متوصلتش بقاعدة البيانات (Supabase). لو إنت صاحب التطبيق: نفّذ خطوات ملف README-SETUP وبعدها حدّث ملف config.js.</div>'
     );
   }
 
   function vLanding() {
     setMain(
-      '<div class="hero"><h1>' + esc(APP_NAME) + ' 🛵</h1>' +
+      '<div class="hero"><img class="hero-logo" src="icon.svg?v=7" alt=""><h1>' + esc(APP_NAME) + '</h1>' +
       '<p>اطلب من محلات مدينة النوبارية… وكابتن يوصّللك لحد باب البيت</p></div>' +
       '<div class="role-grid">' +
       '<div class="role-card" data-role="customer"><span class="emoji">🧺</span><b>زبون</b><div class="muted">عايز تطلب</div></div>' +
@@ -1206,7 +1206,7 @@
   $('#brand').onclick = function () { go(''); render(); };
 
   (async function init() {
-    $('#brand').textContent = APP_NAME + ' 🛵';
+    // العلامة (اللوجو) ثابتة في index.html
     loadCart();
     if (sb) {
       sb.auth.onAuthStateChange(function (event, s) {
