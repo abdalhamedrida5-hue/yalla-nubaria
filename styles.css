@@ -1,7 +1,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --green: #c2410c;
-  --green-dark: #9a3412;
+  --green: #d1460b;
+  --green-dark: #9e3706;
   --bg: #f8f6f4;
   --card: #ffffff;
   --text: #221e1b;
@@ -269,7 +269,7 @@ a.wa {
 }
 .tabitem span { font-size: 1.15rem; line-height: 1; }
 .tabitem.on { color: var(--green); font-weight: 700; }
-body { padding-bottom: 72px; }
+body { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
 
 /* ---------- خطوات الطلب ---------- */
 .steps { display: flex; justify-content: space-between; margin-top: 12px; gap: 4px; }
