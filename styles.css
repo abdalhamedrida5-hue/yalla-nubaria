@@ -32,17 +32,18 @@ body {
   z-index: 50;
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
 }
-.brand { font-weight: 800; font-size: 1.15rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-.brand-mark { width: 30px; height: 30px; display: block; flex: 0 0 auto; }
+.brand { font-weight: 800; font-size: 1.05rem; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; flex: 0 0 auto; }
+.brand-mark { width: 26px; height: 26px; display: block; flex: 0 0 auto; }
+.brand span { white-space: nowrap; }
 .hero-logo { width: 84px; height: 84px; display: block; margin: 0 auto 10px; border-radius: 20px; }
-#topnav { display: flex; gap: 6px; flex-wrap: wrap; }
+#topnav { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 #topnav button {
   background: rgba(255,255,255,.15);
   border: none;
   color: #fff;
   font-family: inherit;
-  font-size: .85rem;
-  padding: 6px 10px;
+  font-size: .78rem;
+  padding: 5px 8px;
   border-radius: 20px;
   cursor: pointer;
 }
@@ -283,3 +284,11 @@ body { padding-bottom: 72px; }
 .stat span { font-size: .68rem; color: var(--muted); }
 
 a.call { color: var(--green); font-weight: 700; text-decoration: none; }
+
+@media (max-width: 420px) {
+  #topbar { padding: 8px 10px; gap: 6px; }
+  .brand { font-size: .95rem; }
+  .brand-mark { width: 22px; height: 22px; }
+  #topnav { gap: 4px; }
+  #topnav button { font-size: .72rem; padding: 4px 7px; }
+}
