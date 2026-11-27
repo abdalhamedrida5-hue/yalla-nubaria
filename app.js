@@ -71,7 +71,7 @@
     if (!subs || !subs.length) return '';
     return subs.map(function (x) { return '<span class="chip ro">' + esc(x) + '</span>'; }).join(' ');
   }
-  var VEHICLES = ['موتوسيكل', 'تكتك', 'عربية', 'دراجة', 'مشي'];
+  var VEHICLES = ['موتوسيكل', 'فسبا', 'تكتك', 'عربية'];
 
   // ---------- أدوات ----------
   function $(s) { return document.querySelector(s); }
@@ -154,7 +154,31 @@
   }
 
   // ---------- عرض ----------
-  function setMain(html) { $('#app').innerHTML = html; }
+  function setMain(html) { $('#app').innerHTML = html + tabbarHTML(); bindTabbar(); }
+
+  function tabbarHTML() {
+    if (!profile) return '';
+    var r = profile.role, items = [];
+    if (r === 'customer') {
+      items = [['#/shops', '🏪', 'المحلات'], ['#/orders', '🧺', 'طلباتي'], ['#/wallet', '💰', 'محفظتي'], ['#/about', 'ℹ️', 'معلومات']];
+    } else if (r === 'shop') {
+      items = [['#/dashboard', '📦', 'الطلبات'], ['#/dashboard/products', '🛍️', 'المنتجات'], ['#/dashboard/settings', '⚙️', 'إعدادات'], ['#/about', 'ℹ️', 'معلومات']];
+    } else if (r === 'captain') {
+      items = [['#/captain', '🛵', 'الطلبات'], ['#/wallet', '💰', 'محفظتي'], ['#/about', 'ℹ️', 'معلومات']];
+    } else if (r === 'admin') {
+      items = [['#/admin', '🛠️', 'لوحة التحكم'], ['#/about', 'ℹ️', 'معلومات']];
+    }
+    var cur = location.hash || '';
+    return '<nav class="tabbar">' + items.map(function (it) {
+      var on = (cur === it[0] || (it[0] !== '#/admin' && cur.indexOf(it[0]) === 0 && it[0] !== '#')) ? ' on' : '';
+      return '<button class="tabitem' + on + '" data-tab-go="' + it[0] + '"><span>' + it[1] + '</span>' + it[2] + '</button>';
+    }).join('') + '</nav>';
+  }
+  function bindTabbar() {
+    document.querySelectorAll('[data-tab-go]').forEach(function (b) {
+      b.onclick = function () { go(b.getAttribute('data-tab-go')); };
+    });
+  }
 
   function render() {
     stopPoll();
@@ -175,11 +199,13 @@
     if (hash.indexOf('#/shop/') === 0) return vShopDetail(hash.split('/')[2]);
     if (hash === '#/checkout') return vCheckout();
     if (hash === '#/orders') return vMyOrders();
+    if (hash.indexOf('#/order/') === 0) return vOrderDetail(hash.split('/')[2]);
+    if (hash === '#/about' || hash === '#/privacy' || hash === '#/terms' || hash === '#/contact') return vInfo(hash.split('/')[1]);
     if (hash === '#/dashboard') return profile.role === 'shop' ? vShopDash('orders') : go('');
     if (hash === '#/dashboard/products') return profile.role === 'shop' ? vShopDash('products') : go('');
     if (hash === '#/dashboard/settings') return profile.role === 'shop' ? vShopDash('settings') : go('');
     if (hash === '#/captain') return profile.role === 'captain' ? vCaptain() : go('');
-    if (hash === '#/admin') return profile.role === 'admin' ? vAdmin('approvals') : go('');
+    if (hash === '#/admin') return profile.role === 'admin' ? vAdmin('home') : go('');
     if (hash === '#/admin/orders') return profile.role === 'admin' ? vAdmin('orders') : go('');
     if (hash === '#/admin/wallets') return profile.role === 'admin' ? vAdmin('wallets') : go('');
     if (hash === '#/wallet') return profile.role === 'admin' ? go('') : vWallet();
@@ -253,6 +279,7 @@
         '<label>نوع المحل</label><select id="f-cat">' + TAXONOMY.map(function (c) { return '<option value="' + c.id + '">' + c.emoji + ' ' + c.name + '</option>'; }).join('') + '</select>' +
         '<label>تخصصات المحل (اختار اللي يناسبك)</label><div class="chips" id="f-subs">' + chipsHTML(subsOf('restaurants'), []) + '</div>' +
         '<label>تخصص تاني (اختياري)</label><input id="f-sub-extra" placeholder="مثال: أكل بيتي">' +
+        '<label>تليفون المحل (أو أرقام مفصولة بفاصلة)</label><input id="f-shopphone" inputmode="numeric" placeholder="011xxxxxxxx">' +
         '<label>عنوان المحل</label><input id="f-address" placeholder="الشارع / المنطقة">' +
         '<label>سعر التوصيل (جنيه)</label><input id="f-fee" inputmode="decimal" value="15">';
     } else if (role === 'captain') {
@@ -290,6 +317,7 @@
         payload.subs = selectedChips($('#f-subs'));
         var extraSub = $('#f-sub-extra').value.trim();
         if (extraSub) payload.subs.push(extraSub);
+        payload.shopPhone = $('#f-shopphone').value.trim() || phone;
         payload.address = $('#f-address').value.trim();
         payload.fee = parseFloat($('#f-fee').value) || 15;
         if (!payload.shopName) return showErr('اكتب اسم المحل');
@@ -317,7 +345,7 @@
         var sr = await sb.from('shops').insert({
           owner_id: user.id, name: payload.shopName, category: payload.cat,
           specialties: payload.subs || [],
-          address: payload.address, phone: phone, delivery_fee: payload.fee
+          address: payload.address, phone: payload.shopPhone, delivery_fee: payload.fee
         });
         if (sr.error) { $('#do-signup').disabled = false; return showErr('حصل خطأ فى حفظ المحل: ' + sr.error.message); }
       }
@@ -545,13 +573,21 @@
       $('#go-shops').onclick = function () { go('#/shops'); };
       return;
     }
-    setMain('<h3 style="margin-bottom:10px">طلباتي</h3>' + orders.map(function (o) {
-      return '<div class="card"><div class="row"><div class="grow">' +
+    var onWay = orders.filter(function (o) { return o.status === 'picked_up'; });
+    setMain((onWay.length ? '<div class="notice ok">🛵 الكابتن في الطريق إليك في ' + onWay.length + ' طلب. اتصل بيه من تفاصيل الطلب.</div>' : '') +
+      '<h3 style="margin-bottom:10px">طلباتي</h3>' + orders.map(function (o) {
+      return '<div class="card" data-order="' + o.id + '" style="cursor:pointer"><div class="row"><div class="grow">' +
         '<b>' + esc(o.shops ? o.shops.name : '') + '</b> <span class="badge ' + o.status + '">' + (STATUS[o.status] || o.status) + '</span>' +
         '<div class="muted">' + money(o.total) + ' • ' + (o.payment_method === 'wallet' ? 'دفع من المحفظة' : 'كاش عند الاستلام') + ' • ' + new Date(o.created_at).toLocaleString('ar-EG') + '</div></div>' +
         (o.status === 'new' ? '<button class="btn small danger" data-cancel="' + o.id + '">إلغاء</button>' : '') +
         '</div></div>';
     }).join(''));
+    document.querySelectorAll('[data-order]').forEach(function (c) {
+      c.onclick = function (e) {
+        if (e.target.closest('[data-cancel]')) return;
+        go('#/order/' + c.getAttribute('data-order'));
+      };
+    });
     orders.forEach(function (o) {
       var b = document.querySelector('[data-cancel="' + o.id + '"]');
       if (b) b.onclick = async function () {
@@ -647,7 +683,7 @@
     var tb = tabBody();
 
     if (tab === 'orders') {
-      var r = await sb.from('orders').select('*, order_items(*)').eq('shop_id', myShop.id).order('created_at', { ascending: false }).limit(40);
+      var r = await sb.from('orders').select('*, order_items(*), captain:profiles!captain_id(full_name, phone)').eq('shop_id', myShop.id).order('created_at', { ascending: false }).limit(40);
       if (r.error) { tb.innerHTML = '<div class="notice err">' + esc(r.error.message) + '</div>'; return; }
       var orders = r.data || [];
       var active = orders.filter(function (o) { return o.status !== 'delivered' && o.status !== 'cancelled'; });
@@ -665,6 +701,8 @@
             '<span class="badge ' + o.status + '">' + (STATUS[o.status] || o.status) + '</span> <b>' + money(o.total) + '</b>' +
             '<div style="margin:6px 0">' + items + '</div>' +
             '<div class="muted">📍 ' + esc(o.delivery_address) + '</div>' +
+            '<div class="muted">📞 الزبون: <a href="tel:' + esc(o.customer_phone) + '">' + esc(o.customer_phone) + '</a>' +
+            (o.captain && o.captain.phone ? ' • الكابتن: <a href="tel:' + esc(o.captain.phone) + '">' + esc(o.captain.phone) + '</a>' : '') + '</div>' +
             (o.notes ? '<div class="muted">📝 ' + esc(o.notes) + '</div>' : '') +
             '</div></div>' +
             '<div class="row" style="margin-top:8px">' + btns +
@@ -839,6 +877,7 @@
   // ---------- أدمن ----------
   async function vAdmin(tab) {
     var tabs = '<div class="tabs">' +
+      '<button data-tab="home" class="' + (tab === 'home' ? 'active' : '') + '">الرئيسية</button>' +
       '<button data-tab="approvals" class="' + (tab === 'approvals' ? 'active' : '') + '">الموافقات</button>' +
       '<button data-tab="orders" class="' + (tab === 'orders' ? 'active' : '') + '">الطلبات</button>' +
       '<button data-tab="wallets" class="' + (tab === 'wallets' ? 'active' : '') + '">المحافظ 💰</button></div>';
@@ -847,6 +886,33 @@
       b.onclick = function () { go('#/admin' + (b.getAttribute('data-tab') === 'approvals' ? '' : '/' + b.getAttribute('data-tab'))); };
     });
     var tb = tabBody();
+
+    if (tab === 'home') {
+      var hp = await sb.from('profiles').select('*').eq('status', 'pending');
+      var ho = await sb.from('orders').select('*').in('status', ['new', 'confirmed', 'picked_up']);
+      var hw = await sb.from('wallets').select('balance');
+      var pendN = (hp.data || []).length, actN = (ho.data || []).length;
+      var total = (hw.data || []).reduce(function (n, w) { return n + Number(w.balance || 0); }, 0);
+      tb.innerHTML =
+        '<div class="stat-grid">' +
+        '<div class="stat"><b>' + pendN + '</b><span>حسابات مستنية موافقة</span></div>' +
+        '<div class="stat"><b>' + actN + '</b><span>طلبات شغالة</span></div>' +
+        '<div class="stat"><b>' + money(total) + '</b><span>إجمالي أرصدة المحافظ</span></div>' +
+        '</div>' +
+        '<div class="card"><h3>إدارة التطبيق</h3>' +
+        '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+        '<button class="btn small" data-go2="#/admin">الموافقات</button>' +
+        '<button class="btn small ghost" data-go2="#/admin/orders">الطلبات</button>' +
+        '<button class="btn small ghost" data-go2="#/admin/wallets">المحافظ 💰</button></div>' +
+        '<div class="muted" style="margin-top:10px">المحافظ سجل تجريبي والشحن والسحب متوقفين مؤقتاً. الدفع كاش عند الاستلام.</div></div>' +
+        '<div class="card"><h3>حسابك</h3><div class="muted">' + esc(profile.full_name) + ' • ' + esc(profile.phone) + ' • أدمن</div>' +
+        '<button class="btn ghost small" id="admin-info" style="margin-top:8px">معلومات التطبيق ℹ️</button></div>';
+      document.querySelectorAll('[data-go2]').forEach(function (b) {
+        b.onclick = function () { go(b.getAttribute('data-go2')); };
+      });
+      $('#admin-info').onclick = function () { go('#/about'); };
+      return;
+    }
 
     if (tab === 'approvals') {
       var r = await sb.from('profiles').select('*').eq('status', 'pending').order('created_at');
@@ -983,6 +1049,108 @@
       });
       startPoll(function () { if ((location.hash || '') === '#/admin/wallets') vAdmin('wallets'); });
     }
+  }
+
+  // ---------- تفاصيل الطلب ----------
+  async function vOrderDetail(id) {
+    setMain('<div class="loading">جاري تحميل الطلب…</div>');
+    var r = await sb.from('orders').select('*, shops(name, phone, address), order_items(*)').eq('id', id).maybeSingle();
+    if (r.error || !r.data) return setMain('<div class="notice err">الطلب ده مش موجود</div>');
+    var o = r.data;
+    var cap = null;
+    if (o.captain_id) {
+      var cr = await sb.from('profiles').select('full_name, phone').eq('id', o.captain_id).maybeSingle();
+      cap = cr.data || null;
+    }
+    var STEPS = [['new', 'اتعمل'], ['confirmed', 'المحل أكد'], ['picked_up', 'مع الكابتن'], ['delivered', 'اتسلّم']];
+    var idx = { 'new': 0, 'confirmed': 1, 'picked_up': 2, 'delivered': 3 }[o.status];
+    if (o.status === 'cancelled') idx = -1;
+
+    var notice = '';
+    if (o.status === 'new') notice = '<div class="notice warn">⏳ المحل لسه بيراجع طلبك</div>';
+    else if (o.status === 'confirmed' && !o.captain_id) notice = '<div class="notice warn">✅ المحل أكد الطلب، مستنيين كابتن يوصّله</div>';
+    else if (o.status === 'confirmed' && o.captain_id) notice = '<div class="notice ok">🔔 الكابتن قبل طلبك: ' + esc(cap ? cap.full_name : '') + ' وجهزه</div>';
+    else if (o.status === 'picked_up') notice = '<div class="notice ok">🛵 الكابتن في الطريق إليك الآن</div>';
+    else if (o.status === 'delivered') notice = '<div class="notice ok">✅ الطلب اتسلّم. شكراً ليك!</div>';
+    else if (o.status === 'cancelled') notice = '<div class="notice err">❌ الطلب ملغي</div>';
+
+    var h = '<button class="linklike" id="back-orders">← رجوع لطلباتي</button>' +
+      notice +
+      '<div class="card"><div class="row"><div class="grow"><h3>' + esc(o.shops ? o.shops.name : '') + '</h3>' +
+      '<div class="muted">' + money(o.total) + ' • كاش عند الاستلام</div>' +
+      '<div class="muted">' + new Date(o.created_at).toLocaleString('ar-EG') + '</div></div></div>' +
+      (idx >= 0 ? '<div class="steps">' + STEPS.map(function (st, i) {
+        return '<div class="step' + (i <= idx ? ' on' : '') + '"><span>' + (i <= idx ? '●' : '○') + '</span>' + st[1] + '</div>';
+      }).join('') + '</div>' : '') +
+      '</div>' +
+      '<div class="card"><h3>الأصناف</h3>' +
+      (o.order_items || []).map(function (i) {
+        return '<div class="total-line"><span>' + esc(i.name) + ' × ' + i.qty + '</span><span>' + money(i.price * i.qty) + '</span></div>';
+      }).join('') +
+      '<div class="total-line"><span>التوصيل</span><span>' + money(o.delivery_fee) + '</span></div>' +
+      '<div class="total-line grand"><span>الإجمالي</span><span>' + money(o.total) + '</span></div></div>' +
+      '<div class="card"><h3>العنوان</h3><div class="muted">📍 ' + esc(o.delivery_address) + '</div>' +
+      (o.notes ? '<div class="muted">📝 ' + esc(o.notes) + '</div>' : '') + '</div>' +
+      '<div class="card"><h3>أرقام التواصل</h3>' +
+      (o.shops && o.shops.phone ? '<div class="total-line"><span>🏪 ' + esc(o.shops.name) + '</span><span><a class="call" href="tel:' + esc(o.shops.phone) + '">' + esc(o.shops.phone) + '</a></span></div>' : '') +
+      (cap ? '<div class="total-line"><span>🛵 الكابتن ' + esc(cap.full_name || '') + '</span><span><a class="call" href="tel:' + esc(cap.phone) + '">' + esc(cap.phone) + '</a></span></div>' : '') +
+      '<div class="row" style="margin-top:8px">' +
+      (o.shops && o.shops.phone ? '<a class="wa" target="_blank" href="' + waLink(o.shops.phone, 'استفسار عن طلبي') + '">واتساب المحل</a> ' : '') +
+      (cap && cap.phone ? '<a class="wa" target="_blank" href="' + waLink(cap.phone, 'أنا الزبون، طلبي معاك') + '">واتساب الكابتن</a>' : '') +
+      '</div></div>' +
+      (o.status === 'new' ? '<button class="btn danger" id="cancel-order">إلغاء الطلب</button>' : '');
+
+    setMain(h);
+    $('#back-orders').onclick = function () { go('#/orders'); };
+    var co = $('#cancel-order');
+    if (co) co.onclick = async function () {
+      if (!confirm('متأكد إنك عايز تلغي الطلب؟')) return;
+      var ur = await sb.from('orders').update({ status: 'cancelled' }).eq('id', o.id);
+      if (ur.error) return showErr(ur.error.message);
+      render();
+    };
+    startPoll(function () { if ((location.hash || '') === '#/order/' + id) vOrderDetail(id); });
+  }
+
+  // ---------- معلومات التطبيق ----------
+  function vInfo(page) {
+    var support = CFG.SUPPORT_PHONE || CFG.ADMIN_PAY_PHONE || '';
+    var body = '';
+    if (page === 'privacy') {
+      body = '<h3>سياسة الخصوصية</h3>' +
+        '<div class="card"><p>بنجمع أقل بيانات ممكنة عشان الطلب يوصلك: اسمك، رقم موبايلك، وعنوان التوصيل.</p>' +
+        '<p>رقمك وعنوانك بيظهروا للمحل والكابتن المسؤولين عن طلبك بس، عشان يقدروا يتواصلوا معاك.</p>' +
+        '<p>مش بنبيع بياناتك ولا بنشاركها مع أي طرف تاني. تقدر تطلب حذف حسابك في أي وقت بالتواصل معانا.</p>' +
+        '<p>المحفظة في التطبيق سجل حسابات داخلي مش حساب بنكي، والشحن والسحب متوقفين مؤقتاً.</p></div>';
+    } else if (page === 'terms') {
+      body = '<h3>شروط الاستخدام</h3>' +
+        '<div class="card"><p>التطبيق بيوصّل بين المحلات والكباتن والزباين في مدينة النوبارية. المحل مسؤول عن جودة المنتجات، والكابتن مسؤول عن التوصيل.</p>' +
+        '<p>الدفع كاش عند الاستلام. الأسعار وسعر التوصيل بيحددها المحل وتظهر قبل تأكيد الطلب.</p>' +
+        '<p>أي إساءة أو طلبات وهمية بتعرض الحساب للإيقاف. عمولة التطبيق 10% من قيمة الطلب وقيمة التوصيل.</p></div>';
+    } else if (page === 'contact') {
+      body = '<h3>تواصل معانا</h3><div class="card">' +
+        (support ? '<div class="total-line"><span>📞 تليفون / واتساب</span><span><a class="call" href="tel:' + esc(support) + '">' + esc(support) + '</a></span></div>' +
+          '<div class="row" style="margin-top:8px"><a class="wa" target="_blank" href="' + waLink(support, 'سلام، عندي استفسار عن يلا نوبارية') + '">واتساب الإدارة</a></div>' : '') +
+        '<div class="muted" style="margin-top:10px">إدارة يلا نوبارية - مدينة النوبارية</div></div>';
+    } else {
+      body = '<h3>عن التطبيق</h3><div class="card">' +
+        '<p>' + esc(APP_NAME) + ' - توصيل من محلات مدينة النوبارية لباب البيت.</p>' +
+        '<p>اطلب من المحلات اللي حواليك، والمحل يجهز طلبك، والكابتن يوصّله لك، وتدفع كاش عند الاستلام.</p>' +
+        '<div class="muted">الإصدار 1.0</div></div>';
+    }
+    setMain('<h3 style="margin:6px 0 10px">ℹ️ معلومات</h3>' + body +
+      '<div class="card"><h3>روابط</h3>' +
+      '<div class="row" style="flex-wrap:wrap;gap:6px">' +
+      '<button class="btn small ghost" data-info="about">عن التطبيق</button>' +
+      '<button class="btn small ghost" data-info="privacy">سياسة الخصوصية</button>' +
+      '<button class="btn small ghost" data-info="terms">الشروط</button>' +
+      '<button class="btn small ghost" data-info="contact">تواصل معانا</button></div></div>' +
+      (profile ? '<button class="btn danger" id="info-logout">تسجيل الخروج</button>' : ''));
+    document.querySelectorAll('[data-info]').forEach(function (b) {
+      b.onclick = function () { go('#/' + b.getAttribute('data-info')); };
+    });
+    var lo = $('#info-logout');
+    if (lo) lo.onclick = async function () { stopPoll(); await sb.auth.signOut(); session = null; profile = null; cart = null; go(''); render(); };
   }
 
   // ---------- تشغيل ----------
