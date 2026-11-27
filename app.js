@@ -186,6 +186,9 @@
     var hash = location.hash || '';
 
     if (!configured) return vSetup();
+    var pv = '';
+    try { pv = new URLSearchParams(location.search).get('preview') || ''; } catch (e) { pv = ''; }
+    if (['customer', 'shop', 'captain'].indexOf(pv) >= 0) return vSignup(pv, true);
     if (!session || !profile) {
       if (hash.indexOf('#/signup') === 0) return vSignup(hash.split('/')[2] || 'customer');
       if (hash === '#/login') return vLogin();
@@ -234,6 +237,11 @@
       '<div class="role-card" data-role="captain"><span class="emoji">🛵</span><b>كابتن</b><div class="muted">عايز توصّل</div></div>' +
       '</div>' +
       '<div class="center"><button class="linklike" id="to-login">عندك حساب؟ ادخل من هنا</button></div>' +
+      '<div class="center" style="margin-top:14px"><div class="muted" style="font-size:.78rem;margin-bottom:4px">معاينة شاشات التسجيل</div>' +
+      '<div class="chips" style="justify-content:center">' +
+      '<a class="chip" href="?preview=customer">🧺 زبون</a>' +
+      '<a class="chip" href="?preview=shop">🏪 محل</a>' +
+      '<a class="chip" href="?preview=captain">🛵 كابتن</a></div></div>' +
       '<div class="center" style="margin-top:18px"><button class="linklike" id="claim-admin" style="color:#aaa;font-size:.75rem">أنا صاحب التطبيق</button></div>'
     );
     document.querySelectorAll('.role-card').forEach(function (c) {
@@ -270,7 +278,7 @@
     };
   }
 
-  function vSignup(role) {
+  function vSignup(role, preview) {
     var roleName = { customer: 'زبون', shop: 'محل', captain: 'كابتن' }[role] || 'زبون';
     var extra = '';
     if (role === 'shop') {
@@ -284,10 +292,14 @@
         '<label>سعر التوصيل (جنيه)</label><input id="f-fee" inputmode="decimal" value="15">';
     } else if (role === 'captain') {
       extra =
-        '<label>وسيلة التوصيل</label><select id="f-vehicle">' + VEHICLES.map(function (v) { return '<option>' + v + '</option>'; }).join('') + '</select>';
+        '<label>وسيلة التوصيل</label><div class="chips" id="f-veh">' +
+        VEHICLES.map(function (v, i) {
+          return '<button type="button" class="chip' + (i === 0 ? ' on' : '') + '" data-veh="' + v + '">' + v + '</button>';
+        }).join('') + '</div>';
     }
     var note = role === 'customer' ? '' :
       '<div class="notice warn">حسابك هيستنى موافقة إدارة التطبيق قبل ما يشتغل.</div>';
+    if (preview) note = '<div class="notice ok">👀 دي معاينة لشاشة التسجيل بس. التسجيل الحقيقي بيتم من التطبيق، والمعاينة مش بتعمل حساب ولا بتدخل أي حد.</div>' + note;
     setMain(
       '<div class="card"><h3>حساب جديد - ' + roleName + '</h3>' + note +
       '<label>الاسم</label><input id="f-name" placeholder="اسمك الكامل">' +
@@ -298,6 +310,18 @@
       '<hr class="divider"><div class="center"><button class="linklike" id="to-login">عندك حساب؟ ادخل</button></div></div>'
     );
     $('#to-login').onclick = function () { go('#/login'); };
+    if (preview) {
+      var pb = $('#do-signup');
+      if (pb) { pb.disabled = true; pb.textContent = 'تسجيل (معاينة)'; }
+    }
+    if (role === 'captain') {
+      document.querySelectorAll('[data-veh]').forEach(function (b) {
+        b.onclick = function () {
+          document.querySelectorAll('[data-veh]').forEach(function (x) { x.classList.remove('on'); });
+          b.classList.add('on');
+        };
+      });
+    }
     if (role === 'shop') {
       bindChips($('#f-subs'));
       $('#f-cat').onchange = function () {
@@ -306,6 +330,7 @@
       };
     }
     $('#do-signup').onclick = async function () {
+      if (preview) return;
       var name = $('#f-name').value.trim(), phone = $('#f-phone').value.trim(), pass = $('#f-pass').value;
       if (name.length < 2) return showErr('اكتب اسمك');
       if (!phoneOk(phone)) return showErr('اكتب رقم موبايل مصري صح (11 رقم يبدأ بـ 01)');
@@ -322,7 +347,10 @@
         payload.fee = parseFloat($('#f-fee').value) || 15;
         if (!payload.shopName) return showErr('اكتب اسم المحل');
       }
-      if (role === 'captain') payload.vehicle = $('#f-vehicle').value;
+      if (role === 'captain') {
+        var vsel = document.querySelector('[data-veh].on');
+        payload.vehicle = vsel ? vsel.getAttribute('data-veh') : VEHICLES[0];
+      }
 
       $('#do-signup').disabled = true;
       var r = await sb.auth.signUp({ email: phoneToEmail(phone), password: pass });
@@ -906,11 +934,23 @@
         '<button class="btn small ghost" data-go2="#/admin/wallets">المحافظ 💰</button></div>' +
         '<div class="muted" style="margin-top:10px">المحافظ سجل تجريبي والشحن والسحب متوقفين مؤقتاً. الدفع كاش عند الاستلام.</div></div>' +
         '<div class="card"><h3>حسابك</h3><div class="muted">' + esc(profile.full_name) + ' • ' + esc(profile.phone) + ' • أدمن</div>' +
-        '<button class="btn ghost small" id="admin-info" style="margin-top:8px">معلومات التطبيق ℹ️</button></div>';
+        '<div class="muted" style="margin-top:6px">عشان تشوف التطبيق كزبون أو محل أو كابتن، اعمل خروج أو افتح معاينة الشاشات.</div>' +
+        '<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">' +
+        '<button class="btn small ghost" id="admin-info">معلومات التطبيق ℹ️</button>' +
+        '<button class="btn small danger" id="admin-logout">تسجيل الخروج / تغيير الحساب</button></div>' +
+        '<div class="chips" style="margin-top:8px">' +
+        '<a class="chip" href="?preview=customer">معاينة تسجيل زبون</a>' +
+        '<a class="chip" href="?preview=shop">معاينة تسجيل محل</a>' +
+        '<a class="chip" href="?preview=captain">معاينة تسجيل كابتن</a></div></div>';
       document.querySelectorAll('[data-go2]').forEach(function (b) {
         b.onclick = function () { go(b.getAttribute('data-go2')); };
       });
       $('#admin-info').onclick = function () { go('#/about'); };
+      $('#admin-logout').onclick = async function () {
+        if (!confirm('تسجيل الخروج من حسابك؟')) return;
+        stopPoll(); await sb.auth.signOut(); session = null; profile = null; cart = null;
+        location.href = location.pathname;
+      };
       return;
     }
 
