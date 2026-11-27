@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#d1460b">
+<title>استرجاع كلمة السر | يلا نوبارية</title>
+<link rel="icon" href="icon.svg?v=9" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=9">
+<style>body{padding-bottom:24px}</style>
+</head>
+<body>
+<header id="topbar">
+  <div class="brand"><img class="brand-mark" src="mark-white.svg?v=9" alt=""><span>يلا نوبارية</span></div>
+  <nav id="topnav"><a class="btn small ghost" href="./" style="text-decoration:none">رجوع للتطبيق</a></nav>
+</header>
+<main>
+  <div class="card">
+    <h3>استرجاع كلمة السر</h3>
+    <div class="muted" style="margin-bottom:12px">اكتب رقم موبايلك، والكود اللي وصلك من إدارة التطبيق، وكلمة السر الجديدة اللي تختارها.</div>
+    <label>رقم الموبايل</label><input id="f-phone" inputmode="numeric" placeholder="01xxxxxxxxx" maxlength="11">
+    <label>كود الاسترجاع</label><input id="f-code" placeholder="الكود" autocapitalize="characters" autocomplete="one-time-code">
+    <label>كلمة السر الجديدة (6 حروف أو أكتر)</label><input id="f-pass" type="password" placeholder="كلمة السر الجديدة">
+    <label>تأكيد كلمة السر</label><input id="f-pass2" type="password" placeholder="اكتبها تاني">
+    <button class="btn" id="do-reset">تغيير كلمة السر</button>
+    <div id="msg" style="margin-top:12px"></div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+(function () {
+  var cfg = window.APP_CONFIG || {};
+  var sb = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  var msg = document.getElementById('msg');
+  function say(html, cls) { msg.innerHTML = '<div class="notice ' + (cls || 'warn') + '">' + html + '</div>'; }
+  document.getElementById('do-reset').onclick = async function () {
+    var phone = document.getElementById('f-phone').value.trim();
+    var code = document.getElementById('f-code').value.trim().toUpperCase();
+    var p1 = document.getElementById('f-pass').value;
+    var p2 = document.getElementById('f-pass2').value;
+    if (!/^01\d{9}$/.test(phone)) return say('اكتب رقم موبايل مصري صح (11 رقم يبدأ بـ 01)');
+    if (!code) return say('اكتب الكود اللي وصلك');
+    if (p1.length < 6) return say('كلمة السر لازم 6 حروف أو أكتر');
+    if (p1 !== p2) return say('كلمتين السر مش زي بعض');
+    var btn = this;
+    btn.disabled = true;
+    say('جاري التغيير…', 'ok');
+    var r = await sb.rpc('reset_password_with_code', { p_phone: phone, p_code: code, p_new_password: p1 });
+    btn.disabled = false;
+    if (r.error) return say('حصل خطأ، جرّب تاني بعد شوية');
+    var res = r.data || {};
+    if (res.ok) {
+      say('تم تغيير كلمة السر. اقفل الصفحة وادخل من التطبيق بالكلمة الجديدة.', 'ok');
+      btn.style.display = 'none';
+      return;
+    }
+    var m = { bad_code: 'الكود غلط', no_code: 'مفيش كود صالح للرقم ده، اطلب كود جديد', too_many: 'جرّبت كتير، اطلب كود جديد', weak: 'كلمة السر ضعيفة', no_user: 'الرقم ده مش متسجل' };
+    say(m[res.error] || 'مش عارف أغير كلمة السر');
+  };
+})();
+</script>
+</body>
+</html>
