@@ -384,32 +384,23 @@
     if (!cart || cartCount() === 0) { go('#/shops'); return; }
     var items = Object.keys(cart.items).map(function (k) { return cart.items[k]; });
     var sub = cartSubtotal(), fee = cart.deliveryFee, total = sub + fee;
-    var bal = await myBalance();
-    var enough = bal !== null && bal >= total;
     setMain(
       '<button class="linklike" id="back">← رجوع</button>' +
       '<div class="card"><h3>إتمام الطلب من ' + esc(cart.shopName) + '</h3>' +
       items.map(function (i) { return '<div class="total-line"><span>' + esc(i.name) + ' × ' + i.qty + '</span><span>' + money(i.qty * i.price) + '</span></div>'; }).join('') +
       '<div class="total-line"><span>التوصيل</span><span>' + money(fee) + '</span></div>' +
-      '<div class="total-line grand"><span>الإجمالي (هيتخصم من محفظتك)</span><span>' + money(total) + '</span></div>' +
-      '<div class="total-line"><span>رصيد محفظتك</span><span>' + (bal === null ? '—' : money(bal)) + '</span></div>' +
+      '<div class="total-line grand"><span>الإجمالي</span><span>' + money(total) + '</span></div>' +
+      '<div class="total-line"><span>طريقة الدفع</span><b>كاش عند الاستلام 💵</b></div>' +
       '</div>' +
-      (bal !== null && !enough
-        ? '<div class="notice warn">رصيدك مش كفاية للطلب ده. اشحن محفظتك الأول وارجع أكّد.</div>' +
-          '<button class="btn" id="go-wallet">شحن المحفظة 💰</button>'
-        : '') +
+      '<div class="notice ok">هتدفع ' + money(total) + ' كاش للكابتن لما يوصّلك الطلب.</div>' +
       '<div class="card">' +
       '<label>العنوان بالتفصيل</label><textarea id="f-addr" rows="2" placeholder="الشارع، رقم العمارة، علامة مميزة…"></textarea>' +
       '<label>موبايل للتواصل</label><input id="f-phone" inputmode="numeric" maxlength="11" value="' + esc(profile.phone) + '">' +
       '<label>ملاحظات (اختياري)</label><input id="f-notes" placeholder="مثال: من غير بصل">' +
-      (bal === null || enough
-        ? '<button class="btn" id="place-order">تأكيد الطلب - ' + money(total) + '</button>'
-        : '') +
+      '<button class="btn" id="place-order">تأكيد الطلب - ' + money(total) + '</button>' +
       '</div>'
     );
     $('#back').onclick = function () { go('#/shop/' + cart.shopId); };
-    var gw = $('#go-wallet');
-    if (gw) gw.onclick = function () { go('#/wallet'); };
     var po = $('#place-order');
     if (!po) return;
     po.onclick = async function () {
@@ -420,11 +411,10 @@
       var or = await sb.from('orders').insert({
         customer_id: profile.id, shop_id: cart.shopId,
         delivery_address: addr, customer_phone: phone, notes: notes,
-        subtotal: sub, delivery_fee: fee, total: total
+        subtotal: sub, delivery_fee: fee, total: total, payment_method: 'cash'
       }).select('id').single();
       if (or.error) {
         po.disabled = false;
-        if (or.error.message && or.error.message.indexOf('insufficient_wallet_balance') >= 0) return showErr('رصيدك مش كفاية، اشحن محفظتك الأول');
         return showErr('الطلب متبعتش: ' + or.error.message);
       }
       var orderId = or.data.id;
@@ -435,7 +425,7 @@
       cart = null; saveCart();
       setMain(
         '<div class="hero"><h1>✅ طلبك اتبعت!</h1><p>المحل هيراجع الطلب ويأكده، والكابتن هيوصّله</p></div>' +
-        '<div class="notice ok">اتخصم ' + money(total) + ' من محفظتك</div>' +
+        '<div class="notice ok">هتدفع ' + money(total) + ' كاش للكابتن عند الاستلام 💵</div>' +
         '<button class="btn" id="to-orders">تابع طلبك</button>'
       );
       $('#to-orders').onclick = function () { go('#/orders'); };
@@ -461,7 +451,7 @@
     setMain('<h3 style="margin-bottom:10px">طلباتي</h3>' + orders.map(function (o) {
       return '<div class="card"><div class="row"><div class="grow">' +
         '<b>' + esc(o.shops ? o.shops.name : '') + '</b> <span class="badge ' + o.status + '">' + (STATUS[o.status] || o.status) + '</span>' +
-        '<div class="muted">' + money(o.total) + ' • ' + new Date(o.created_at).toLocaleString('ar-EG') + '</div></div>' +
+        '<div class="muted">' + money(o.total) + ' • ' + (o.payment_method === 'wallet' ? 'دفع من المحفظة' : 'كاش عند الاستلام') + ' • ' + new Date(o.created_at).toLocaleString('ar-EG') + '</div></div>' +
         (o.status === 'new' ? '<button class="btn small danger" data-cancel="' + o.id + '">إلغاء</button>' : '') +
         '</div></div>';
     }).join(''));
@@ -489,15 +479,17 @@
       order_refund: 'استرجاع طلب ملغي', order_earning: 'ربح من طلب',
       admin_adjustment: 'قيد يدوي من الإدارة'
     };
+    var transferOn = !!CFG.WALLET_TRANSFER_ENABLED;
     var h = '<div class="hero"><h1>💰 محفظتي</h1>' +
       '<p style="font-size:1.6rem;margin:4px 0"><b>' + (bal === null ? '—' : money(bal)) + '</b></p></div>' +
-      '<div class="notice warn">رصيدك ده سجل حسابات جوه التطبيق. الشحن والسحب بيتأكدوا يدوي من الإدارة (فودافون كاش / إنستاباي)، مفيش فلوس بتتنقل لوحدها جوه التطبيق.</div>' +
-      (CFG.WALLET_PROVIDER_ENABLED ? '' : '<div class="muted" style="margin:0 6px 10px">الشحن الأوتوماتيك هيتفعّل لما وسيلة الدفع الرسمية تتفعل.</div>');
+      '<div class="notice warn">رصيدك ده سجل حسابات جوه التطبيق (مش حساب بنكي). الفلوس الحقيقية بتتدفع كاش عند الاستلام.</div>' +
+      (transferOn ? '' : '<div class="notice warn">⏸️ الشحن والسحب متوقفين مؤقتاً لحد ما نراجع الترخيص. رصيدك وكل حركاتك محفوظين زي ما هما ومش هيتغيروا.</div>');
 
     h += reqs.map(function (q) {
       return '<div class="notice warn">⏳ طلب ' + (q.kind === 'topup' ? 'شحن' : 'سحب') + ' ' + money(q.amount) + ' مستني موافقة الإدارة</div>';
     }).join('');
 
+    if (transferOn) {
     h += '<div class="card"><h3>شحن المحفظة</h3>' +
       '<div class="muted" style="margin-bottom:8px">حوّل المبلغ فودافون كاش أو إنستاباي على رقم الإدارة: <b>' + esc(CFG.ADMIN_PAY_PHONE || 'اسأل الإدارة') + '</b> وبعدين ابعت الطلب هنا، والإدارة هتأكد وتضيف الرصيد.</div>' +
       '<label>المبلغ (جنيه)</label><input id="w-topup-amt" inputmode="decimal" placeholder="مثال: 100">' +
@@ -509,6 +501,7 @@
       '<label>المبلغ (جنيه)</label><input id="w-wd-amt" inputmode="decimal" placeholder="مثال: 50">' +
       '<label>رقم استلام الفلوس</label><input id="w-wd-note" placeholder="رقم فودافون كاش / إنستاباي بتاعك">' +
       '<button class="btn" id="w-wd">إرسال طلب سحب</button></div>';
+    }
 
     h += '<h3 style="margin:14px 0 8px">آخر الحركات</h3>';
     h += ledger.length ? ledger.map(function (l) {
@@ -521,7 +514,7 @@
     }).join('') : '<div class="notice warn">مفيش حركات لسه</div>';
     setMain(h);
 
-    $('#w-topup').onclick = async function () {
+    if ($('#w-topup')) $('#w-topup').onclick = async function () {
       var amt = parseFloat($('#w-topup-amt').value);
       if (!(amt > 0)) return showErr('اكتب مبلغ صح');
       $('#w-topup').disabled = true;
@@ -530,7 +523,7 @@
       if (r.error) return showErr('الطلب متبعتش: ' + r.error.message);
       render();
     };
-    $('#w-wd').onclick = async function () {
+    if ($('#w-wd')) $('#w-wd').onclick = async function () {
       var amt = parseFloat($('#w-wd-amt').value);
       if (!(amt > 0)) return showErr('اكتب مبلغ صح');
       if (bal !== null && amt > bal) return showErr('المبلغ أكبر من رصيدك');
@@ -668,7 +661,7 @@
       };
       var bal2 = await myBalance();
       $('#s-dues').innerHTML = '<div class="total-line grand"><span>رصيدك (نصيبك بعد خصم عمولة 10%)</span><span>' + money(bal2 || 0) + '</span></div>' +
-        '<div class="muted">أرباحك من الطلبات بتدخل محفظتك عند التسليم، وتقدر تطلب سحبها.</div>' +
+        '<div class="muted">أرباحك من الطلبات بتتسجل فى محفظتك عند التسليم. طلبات السحب متوقفة مؤقتاً لحد ما نراجع الترخيص.</div>' +
         '<button class="btn small" id="s-wallet" style="margin-top:8px">فتح محفظتي 💰</button>';
       $('#s-wallet').onclick = function () { go('#/wallet'); };
     }
@@ -691,6 +684,7 @@
           '<div class="row"><div class="grow"><span class="badge ' + o.status + '">' + (STATUS[o.status] || o.status) + '</span> <b>' + money(o.total) + '</b> <span class="muted">(نصيبك ' + money(o.delivery_fee * 0.9) + ')</span></div></div>' +
           '<div class="muted" style="margin:6px 0">من: ' + esc(o.shops ? o.shops.name : '') + ' - ' + esc(o.shops ? o.shops.address : '') + '</div>' +
           '<div class="muted">إلى: ' + esc(o.delivery_address) + '</div>' +
+          '<div class="muted">💵 هتحصّل من الزبون كاش: <b>' + money(o.total) + '</b></div>' +
           (o.notes ? '<div class="muted">📝 ' + esc(o.notes) + '</div>' : '') +
           '<div class="row" style="margin-top:8px">' + btn +
           '<a class="wa" target="_blank" href="' + waLink(o.customer_phone, 'أنا كابتن يلا نوبارية، جاي بالطلب') + '">واتساب الزبون</a></div></div>';
@@ -703,7 +697,7 @@
         '<div class="row"><div class="grow"><b>' + esc(o.shops ? o.shops.name : '') + '</b><div class="muted">' + esc(o.shops ? o.shops.address : '') + '</div></div>' +
         '<b>' + money(o.delivery_fee) + '</b></div>' +
         '<div class="muted" style="margin:6px 0">يوصل إلى: ' + esc(o.delivery_address) + '</div>' +
-        '<div class="row"><div class="grow muted">الزبون دافع من محفظته 👛 ونصيبك هيضاف لمحفظتك عند التسليم</div>' +
+        '<div class="row"><div class="grow muted">الزبون هيدفع كاش عند الاستلام 💵 ونصيبك هيتسجل فى محفظتك عند التسليم</div>' +
         '<button class="btn small" data-take="' + o.id + '">أستلم الطلب</button></div></div>';
     }).join('');
     setMain(h);
@@ -716,7 +710,7 @@
       };
       var d = document.querySelector('[data-done="' + o.id + '"]');
       if (d) d.onclick = async function () {
-        if (!confirm('تأكيد التسليم؟ نصيبك هيضاف لمحفظتك')) return;
+        if (!confirm('تأكيد التسليم؟ اتأكد إنك استلمت الكاش من الزبون. نصيبك هيتسجل فى محفظتك.')) return;
         var ur = await sb.from('orders').update({ status: 'delivered' }).eq('id', o.id);
         if (ur.error) return showErr(ur.error.message);
         render();
@@ -795,7 +789,7 @@
       var reqs = wr.data || [];
       var pendR = reqs.filter(function (q) { return q.status === 'pending'; });
       var doneR = reqs.filter(function (q) { return q.status !== 'pending'; }).slice(0, 15);
-      var h = '';
+      var h = '<div class="notice warn">⚠️ المحافظ دلوقتي سجل تجريبي: الشحن والسحب متوقفين مؤقتاً، وأي قيد يدوي هنا بيتسجل باسم «قيد يدوي تجريبي» ومالوش علاقة بفلوس حقيقية.</div>';
       h += pendR.length ? pendR.map(function (q) {
         var p = q.profiles || {};
         return '<div class="card"><div class="row"><div class="grow">' +
@@ -818,8 +812,8 @@
             '<div class="muted">' + esc(p.phone || '') + '</div></div>' +
             '<b>' + money(w.balance) + '</b></div>' +
             '<div class="row" style="margin-top:8px">' +
-            '<button class="btn small ghost" data-plus="' + w.user_id + '">＋ قيد إضافة</button> ' +
-            '<button class="btn small ghost danger" data-minus="' + w.user_id + '">－ قيد خصم</button></div></div>';
+            '<button class="btn small ghost" data-plus="' + w.user_id + '">＋ قيد إضافة (تجريبي)</button> ' +
+            '<button class="btn small ghost danger" data-minus="' + w.user_id + '">－ قيد خصم (تجريبي)</button></div></div>';
         }).join('');
       }
       if (doneR.length) {
@@ -833,7 +827,7 @@
       tb.innerHTML = h;
       async function adminAdjust(w, sign) {
         var p = w.profiles || {};
-        var amt = parseFloat(prompt((sign > 0 ? 'إضافة' : 'خصم') + ' كام جنيه ' + (sign > 0 ? 'لـ' : 'من') + ' ' + (p.full_name || '') + '؟'));
+        var amt = parseFloat(prompt('قيد تجريبي - ' + (sign > 0 ? 'إضافة' : 'خصم') + ' كام جنيه ' + (sign > 0 ? 'لـ' : 'من') + ' ' + (p.full_name || '') + '؟'));
         if (!(amt > 0)) return;
         var note = prompt('سبب القيد (هيظهر فى دفتر المستخدم):') || '';
         var r = await sb.rpc('admin_adjust_wallet', { p_user: w.user_id, p_amount: sign * amt, p_note: note });
@@ -853,8 +847,8 @@
         var ok = document.querySelector('[data-wok="' + q.id + '"]');
         if (ok) ok.onclick = async function () {
           var msg = q.kind === 'topup'
-            ? 'تأكيد الشحن؟ لازم تكون استلمت التحويلة فعلاً قبل ما تضيف الرصيد'
-            : 'تأكيد السحب؟ هيتحسم من رصيده، حوّلله المبلغ فودافون كاش / إنستاباي';
+            ? 'تأكيد الشحن؟ الشحن متوقف مؤقتاً، فالتأكيد ده قيد تجريبي على السجل بس'
+            : 'تأكيد السحب؟ السحب متوقف مؤقتاً، فالتأكيد ده قيد تجريبي على السجل بس';
           if (!confirm(msg)) return;
           var ur = await sb.from('wallet_requests').update({ status: 'approved' }).eq('id', q.id);
           if (ur.error) {
