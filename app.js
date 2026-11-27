@@ -683,7 +683,7 @@
     var tb = tabBody();
 
     if (tab === 'orders') {
-      var r = await sb.from('orders').select('*, order_items(*), captain:profiles!captain_id(full_name, phone)').eq('shop_id', myShop.id).order('created_at', { ascending: false }).limit(40);
+      var r = await sb.from('orders').select('*, order_items(*)').eq('shop_id', myShop.id).order('created_at', { ascending: false }).limit(40);
       if (r.error) { tb.innerHTML = '<div class="notice err">' + esc(r.error.message) + '</div>'; return; }
       var orders = r.data || [];
       var active = orders.filter(function (o) { return o.status !== 'delivered' && o.status !== 'cancelled'; });
@@ -702,7 +702,7 @@
             '<div style="margin:6px 0">' + items + '</div>' +
             '<div class="muted">📍 ' + esc(o.delivery_address) + '</div>' +
             '<div class="muted">📞 الزبون: <a href="tel:' + esc(o.customer_phone) + '">' + esc(o.customer_phone) + '</a>' +
-            (o.captain && o.captain.phone ? ' • الكابتن: <a href="tel:' + esc(o.captain.phone) + '">' + esc(o.captain.phone) + '</a>' : '') + '</div>' +
+            '</div>' +
             (o.notes ? '<div class="muted">📝 ' + esc(o.notes) + '</div>' : '') +
             '</div></div>' +
             '<div class="row" style="margin-top:8px">' + btns +
@@ -1057,11 +1057,10 @@
     var r = await sb.from('orders').select('*, shops(name, phone, address), order_items(*)').eq('id', id).maybeSingle();
     if (r.error || !r.data) return setMain('<div class="notice err">الطلب ده مش موجود</div>');
     var o = r.data;
-    var cap = null;
-    if (o.captain_id) {
-      var cr = await sb.from('profiles').select('full_name, phone').eq('id', o.captain_id).maybeSingle();
-      cap = cr.data || null;
-    }
+    var ct = await sb.rpc('order_contacts', { p_order: id });
+    var contacts = ct.data || {};
+    var cap = (o.captain_id && contacts.captain_phone) ? { full_name: contacts.captain_name, phone: contacts.captain_phone } : null;
+    var shopPhone = contacts.shop_phone || (o.shops ? o.shops.phone : '');
     var STEPS = [['new', 'اتعمل'], ['confirmed', 'المحل أكد'], ['picked_up', 'مع الكابتن'], ['delivered', 'اتسلّم']];
     var idx = { 'new': 0, 'confirmed': 1, 'picked_up': 2, 'delivered': 3 }[o.status];
     if (o.status === 'cancelled') idx = -1;
@@ -1092,10 +1091,10 @@
       '<div class="card"><h3>العنوان</h3><div class="muted">📍 ' + esc(o.delivery_address) + '</div>' +
       (o.notes ? '<div class="muted">📝 ' + esc(o.notes) + '</div>' : '') + '</div>' +
       '<div class="card"><h3>أرقام التواصل</h3>' +
-      (o.shops && o.shops.phone ? '<div class="total-line"><span>🏪 ' + esc(o.shops.name) + '</span><span><a class="call" href="tel:' + esc(o.shops.phone) + '">' + esc(o.shops.phone) + '</a></span></div>' : '') +
+      (shopPhone ? '<div class="total-line"><span>🏪 ' + esc(o.shops ? o.shops.name : '') + '</span><span><a class="call" href="tel:' + esc(shopPhone) + '">' + esc(shopPhone) + '</a></span></div>' : '') +
       (cap ? '<div class="total-line"><span>🛵 الكابتن ' + esc(cap.full_name || '') + '</span><span><a class="call" href="tel:' + esc(cap.phone) + '">' + esc(cap.phone) + '</a></span></div>' : '') +
       '<div class="row" style="margin-top:8px">' +
-      (o.shops && o.shops.phone ? '<a class="wa" target="_blank" href="' + waLink(o.shops.phone, 'استفسار عن طلبي') + '">واتساب المحل</a> ' : '') +
+      (shopPhone ? '<a class="wa" target="_blank" href="' + waLink(shopPhone, 'استفسار عن طلبي') + '">واتساب المحل</a> ' : '') +
       (cap && cap.phone ? '<a class="wa" target="_blank" href="' + waLink(cap.phone, 'أنا الزبون، طلبي معاك') + '">واتساب الكابتن</a>' : '') +
       '</div></div>' +
       (o.status === 'new' ? '<button class="btn danger" id="cancel-order">إلغاء الطلب</button>' : '');
