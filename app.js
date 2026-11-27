@@ -31,6 +31,11 @@
 
   // ---------- أدوات ----------
   function $(s) { return document.querySelector(s); }
+
+  // مرجع حى لتاب المحتوى: الصفحة ممكن تتعاد رسمها أثناء التحميل، فبنكتب بس لو العنصر لسه موجود
+  function tabBody() {
+    return { set innerHTML(v) { var t = $('#tab-body'); if (t) t.innerHTML = v; } };
+  }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -547,7 +552,7 @@
     document.querySelectorAll('.tabs button').forEach(function (b) {
       b.onclick = function () { go('#/dashboard' + (b.getAttribute('data-tab') === 'orders' ? '' : '/' + b.getAttribute('data-tab'))); };
     });
-    var tb = $('#tab-body');
+    var tb = tabBody();
 
     if (tab === 'orders') {
       var r = await sb.from('orders').select('*, order_items(*)').eq('shop_id', myShop.id).order('created_at', { ascending: false }).limit(40);
@@ -737,7 +742,7 @@
     document.querySelectorAll('.tabs button').forEach(function (b) {
       b.onclick = function () { go('#/admin' + (b.getAttribute('data-tab') === 'approvals' ? '' : '/' + b.getAttribute('data-tab'))); };
     });
-    var tb = $('#tab-body');
+    var tb = tabBody();
 
     if (tab === 'approvals') {
       var r = await sb.from('profiles').select('*').eq('status', 'pending').order('created_at');
