@@ -191,3 +191,38 @@ a.wa {
 .hero { text-align: center; padding: 26px 10px 6px; }
 .hero h1 { font-size: 1.6rem; margin-bottom: 6px; }
 .hero p { color: var(--muted); }
+
+/* ---------- التصنيفات والتخصصات ---------- */
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.cat-card {
+  background: #fff;
+  border: 2px solid #e4eae7;
+  border-radius: var(--radius);
+  padding: 10px 8px;
+  text-align: center;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.cat-card .emoji { font-size: 1.5rem; display: block; margin-bottom: 4px; }
+.cat-card b { font-size: .8rem; display: block; }
+.cat-card .muted { font-size: .68rem; }
+.cat-card.on { border-color: var(--green); background: #eef7f1; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.chips.tight { margin: 6px 0 2px; }
+.chip {
+  border: 1px solid #cfd8d3;
+  background: #fff;
+  color: var(--text);
+  border-radius: 16px;
+  padding: 5px 12px;
+  font-size: .78rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.chip.on { background: var(--green); border-color: var(--green); color: #fff; font-weight: 700; }
+.chip.ro { cursor: default; background: #f2f6f4; font-size: .72rem; padding: 3px 9px; }
