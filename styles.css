@@ -226,3 +226,45 @@ a.wa {
 }
 .chip.on { background: var(--green); border-color: var(--green); color: #fff; font-weight: 700; }
 .chip.ro { cursor: default; background: #f2f6f4; font-size: .72rem; padding: 3px 9px; }
+
+/* ---------- شريط التبويبات السفلي ---------- */
+.tabbar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  background: #fff;
+  border-top: 1px solid #e4eae7;
+  padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
+  z-index: 50;
+}
+.tabitem {
+  flex: 1;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: .7rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  cursor: pointer;
+}
+.tabitem span { font-size: 1.15rem; line-height: 1; }
+.tabitem.on { color: var(--green); font-weight: 700; }
+body { padding-bottom: 72px; }
+
+/* ---------- خطوات الطلب ---------- */
+.steps { display: flex; justify-content: space-between; margin-top: 12px; gap: 4px; }
+.step { flex: 1; text-align: center; font-size: .68rem; color: var(--muted); }
+.step span { display: block; font-size: 1rem; }
+.step.on { color: var(--green); font-weight: 700; }
+
+/* ---------- إحصائيات الأدمن ---------- */
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.stat { background: #fff; border-radius: var(--radius); padding: 12px 8px; text-align: center; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 1.05rem; color: var(--green); }
+.stat span { font-size: .68rem; color: var(--muted); }
+
+a.call { color: var(--green); font-weight: 700; text-decoration: none; }
