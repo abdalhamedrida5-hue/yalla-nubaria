@@ -544,9 +544,9 @@
   async function vShopDash(tab) {
     if (!myShop) { setMain('<div class="loading">جاري التحميل…</div>'); await loadProfile(); if (!myShop) return setMain('<div class="notice err">مفيش محل مربوط بحسابك</div>'); }
     var tabs = '<div class="tabs">' +
-      '<button data-tab="orders" class="' + (tab === 'orders' ? 'active' : '') + '>الطلبات</button>' +
-      '<button data-tab="products" class="' + (tab === 'products' ? 'active' : '') + '>المنتجات</button>' +
-      '<button data-tab="settings" class="' + (tab === 'settings' ? 'active' : '') + '>إعدادات</button></div>';
+      '<button data-tab="orders" class="' + (tab === 'orders' ? 'active' : '') + '">الطلبات</button>' +
+      '<button data-tab="products" class="' + (tab === 'products' ? 'active' : '') + '">المنتجات</button>' +
+      '<button data-tab="settings" class="' + (tab === 'settings' ? 'active' : '') + '">إعدادات</button></div>';
     var body = '<div class="loading">جاري التحميل…</div>';
     setMain(tabs + '<div id="tab-body">' + body + '</div>');
     document.querySelectorAll('.tabs button').forEach(function (b) {
@@ -735,9 +735,9 @@
   // ---------- أدمن ----------
   async function vAdmin(tab) {
     var tabs = '<div class="tabs">' +
-      '<button data-tab="approvals" class="' + (tab === 'approvals' ? 'active' : '') + '>الموافقات</button>' +
-      '<button data-tab="orders" class="' + (tab === 'orders' ? 'active' : '') + '>الطلبات</button>' +
-      '<button data-tab="wallets" class="' + (tab === 'wallets' ? 'active' : '') + '>المحافظ 💰</button></div>';
+      '<button data-tab="approvals" class="' + (tab === 'approvals' ? 'active' : '') + '">الموافقات</button>' +
+      '<button data-tab="orders" class="' + (tab === 'orders' ? 'active' : '') + '">الطلبات</button>' +
+      '<button data-tab="wallets" class="' + (tab === 'wallets' ? 'active' : '') + '">المحافظ 💰</button></div>';
     setMain(tabs + '<div id="tab-body"><div class="loading">جاري التحميل…</div></div>');
     document.querySelectorAll('.tabs button').forEach(function (b) {
       b.onclick = function () { go('#/admin' + (b.getAttribute('data-tab') === 'approvals' ? '' : '/' + b.getAttribute('data-tab'))); };
