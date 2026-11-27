@@ -861,7 +861,9 @@
           '<div class="muted">إلى: ' + esc(o.delivery_address) + '</div>' +
           '<div class="muted">💵 هتحصّل من الزبون كاش: <b>' + money(o.total) + '</b></div>' +
           (o.notes ? '<div class="muted">📝 ' + esc(o.notes) + '</div>' : '') +
-          '<div class="row" style="margin-top:8px">' + btn +
+          '<div class="muted" style="margin-top:6px">📞 رقم الزبون: <a href="tel:' + esc(o.customer_phone) + '"><b dir="ltr">' + esc(o.customer_phone) + '</b></a></div>' +
+          '<div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">' + btn +
+          '<a class="btn small ghost" href="tel:' + esc(o.customer_phone) + '">اتصل بالزبون 📞</a>' +
           '<a class="wa" target="_blank" href="' + waLink(o.customer_phone, 'أنا كابتن يلا نوبارية، جاي بالطلب') + '">واتساب الزبون</a></div></div>';
       }).join('');
     }
